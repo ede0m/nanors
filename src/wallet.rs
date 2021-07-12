@@ -5,6 +5,8 @@ use blake2::digest::{Update, VariableOutput};
 use ed25519_dalek::PublicKey;
 use ed25519_dalek::SecretKey;
 use byteorder::{BigEndian, ByteOrder};
+use bitvec::prelude::*;
+
 
 pub struct Wallet {
     name : String,
@@ -43,7 +45,8 @@ impl Account {
         println!("{}", to_hex_string(&sk));
         let pk = Account::create_pk(sk).unwrap();
         println!("{}", to_hex_string(&pk));
-        let account = String::from("");
+        let account = Account::create_addr(&pk).unwrap();
+        println!("{}", account);
         Ok(Account {index, sk, pk, account})
     }
 
@@ -71,8 +74,29 @@ impl Account {
         Ok(ed25519_pk.to_bytes().try_into()?)
     }
     
-    fn create_account(pubk: [u8; 32]) -> String {
-        return String::from("not implemented");
+    fn create_addr(pk: &[u8; 32]) -> Result<String, Box<dyn std::error::Error>> {
+        let mut s = String::new();
+        
+        // checksum of 5 bytes of pk
+        let mut hasher = VarBlake2b::new(5)?;
+        hasher.update(pk);
+        let mut cs_box = hasher.finalize_boxed();
+        (*cs_box).reverse(); // reverse the byte order as blake2b outputs in little endian
+        let cs_bits = (*cs_box).view_bits::<Msb0>();
+        let cs_nb32 = base32_nano_encode(&cs_bits);
+        
+        // 260 % 5 (base32 represented by 5 bits) = 0
+        let mut pk_bits : BitVec<Msb0, u8> = BitVec::with_capacity(260);
+        // 4 bits of padding in the front of the public key when encoding.
+        let pad = bitvec![Msb0, u8; 0; 4]; 
+        pk_bits.extend_from_bitslice(&pad);
+        pk_bits.extend_from_raw_slice(pk);
+        let pk_nb32 = base32_nano_encode(&pk_bits);
+        
+        s.push_str("nano_");
+        s.push_str(&pk_nb32);
+        s.push_str(&cs_nb32);
+        Ok(s)
     }
 }
 
@@ -81,4 +105,22 @@ pub fn to_hex_string(bytes: &[u8]) -> String {
         .map(|b| format!("{:02X}", b))
         .collect();
     strs.join("")
+}
+
+const B32_ENCODING_SIZE : usize = 5; 
+const ALPHABET_ARR : [char; 32] = 
+['1','3','4','5','6','7','8','9','a','b',
+     'c','d','e','f','g','h','i','j','k','m',
+     'n','o','p','q','r','s','t','u','w','x',
+     'y','z'];
+
+// credit to https://github.com/feeless/feeless/blob/main/src/keys/address.rs   
+pub fn base32_nano_encode(bits: &BitSlice<Msb0, u8>) -> String {
+    let mut s = String::new();
+    for idx in (0..bits.len()).step_by(B32_ENCODING_SIZE) {
+        let chunk = &bits[idx..idx+B32_ENCODING_SIZE];
+        let value : u8 = chunk.load_be(); // big endian (msb ordering)
+        s.push(ALPHABET_ARR[value as usize]);
+    }
+    s
 }

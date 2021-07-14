@@ -14,6 +14,7 @@ blake2 = "0.9.1"
 byteorder = "1.4.3"
 ed25519-dalek = "1.0.1"
 bitvec = "0.22.3"
+dialoguer = "0.8.0"
 
 [patch.crates-io]
 ed25519-dalek = { git = "https://github.com/ede0m/ed25519-dalek", rev="ad94641198d8f4bb8b4b025f2f60e6faaab6cb5c" } 

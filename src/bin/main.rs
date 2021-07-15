@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
     loop {
-        let selection = dialoguer_select(main_menu, "select an sub-menu:");
+        let selection = menu_select(main_menu, "select an sub-menu:");
         match selection {
             "wallet" => run_wallet_menu(wallet_menu),
             _ => println!("{} unrecognized", selection)
@@ -31,20 +31,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-
-fn dialoguer_select<'a>(menu : &'a[&str], prompt : &str) -> &'a str {
-    let idx_selected = Select::with_theme(&ColorfulTheme::default())
-        .with_prompt(prompt)
-        .items(&menu[..])
-        .interact()
-        .unwrap();
-    menu[idx_selected]
-}
-
 fn run_wallet_menu(menu : &[&str]) {
 
     loop {
-        let selection = dialoguer_select(menu, "select a wallet option:");
+        let selection = menu_select(menu, "select a wallet option:");
         match selection {
             "new" => continue,
             "load" => continue,
@@ -53,4 +43,13 @@ fn run_wallet_menu(menu : &[&str]) {
             _ => println!("{} unrecognized", selection)
         }
     }
+}
+
+fn menu_select<'a>(menu : &'a[&str], prompt : &str) -> &'a str {
+    let idx_selected = Select::with_theme(&ColorfulTheme::default())
+        .with_prompt(prompt)
+        .items(&menu[..])
+        .interact()
+        .unwrap();
+    menu[idx_selected]
 }

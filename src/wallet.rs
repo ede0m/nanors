@@ -3,8 +3,10 @@ use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek::PublicKey;
 use ed25519_dalek::SecretKey;
-use rand::Rng;
 use std::convert::TryInto;
+use std::error::Error;
+use std::str;
+
 
 pub struct Wallet {
     name: String,
@@ -19,17 +21,14 @@ pub struct Account {
     account: String,
 }
 
-fn generate_seed() -> [u8; 32] {
-    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    random_bytes
-}
 
 impl Wallet {
-    pub fn new(name: &str) -> Result<Wallet, Box<dyn std::error::Error>> {
+    pub fn new(name: &str, pw : &str) -> Result<Wallet, Box<dyn Error>> {
         let name = String::from(name);
-        let seed = generate_seed();
-        println!("{}", encoding::to_hex_string(&seed));
-        println!("{:?}", &seed);
+        let seed = encoding::generate_nano_seed();
+        let encrypted = Wallet::encrypt_wallet_as_str(&name, &seed, pw)?;
+
+        //println!("{}", encoding::to_hex_string(&seed));
         let mut accounts = Vec::new();
         accounts.push(Account::new(0, &seed)?);
         Ok(Wallet {
@@ -37,6 +36,20 @@ impl Wallet {
             seed,
             accounts,
         })
+    }
+
+    fn encrypt_wallet_as_str(name: &str, seed: &[u8; 32], pw : &str) -> Result<String, Box<dyn Error>> {
+        let encrypted_seed_nonce = encoding::aes_gcm_encrypt(pw.as_bytes(), seed);
+        let mut ret = String::from(name);
+        ret.push('|');
+        ret.push_str(str::from_utf8(encrypted_seed_nonce.0.as_slice())?); // seed
+        ret.push('|');
+        ret.push_str(str::from_utf8(&encrypted_seed_nonce.1)?); // nonce
+        Ok(ret)
+    }
+
+    pub fn load(name: &str, pw : &str) -> Result<Wallet, Box<dyn Error>> {
+        unimplemented!("load isn't quxable");
     }
 }
 

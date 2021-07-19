@@ -1,12 +1,11 @@
 use aes_gcm::aead::{Aead, NewAead};
 use aes_gcm::{Aes128Gcm, Nonce};
-use hkdf::Hkdf;
-use sha2::Sha256;
 use bitvec::prelude::*;
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
+use hkdf::Hkdf;
 use rand::Rng;
-
+use sha2::Sha256;
 
 const B32_ENCODING_SIZE: usize = 5;
 const ALPHABET_ARR: [char; 32] = [
@@ -35,7 +34,7 @@ pub fn generate_nano_seed() -> [u8; 32] {
     random_bytes
 }
 
-pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info : &[u8]) -> (Vec<u8>, [u8; 12]) {
+pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u8; 12]) {
     let key = hkdf_pw_expand(pw, hkdf_info);
     let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
@@ -47,7 +46,7 @@ pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info : &[u8]) -> (Vec<u8>, [
     )
 }
 
-pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info : &[u8]) -> Vec<u8> {
+pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info: &[u8]) -> Vec<u8> {
     let key = hkdf_pw_expand(pw, hkdf_info);
     let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
@@ -55,13 +54,13 @@ pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info 
     cipher.decrypt(nonce, ciphertext).expect("decrypt failure")
 }
 
-pub fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] { 
+pub fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
     let mut okm = [0u8; 16]; // 128bit AES
     let h = Hkdf::<Sha256>::new(None, ikm);
-    h.expand(info, &mut okm).expect("hdkf expand - something went wrong");
+    h.expand(info, &mut okm)
+        .expect("hdkf expand - something went wrong");
     okm
 }
-
 
 /*pub fn pbkdf2_key(key_buffer : [u8; 32], pw : &[u8]) -> [u8; 32] {
     let iters = NonZeroU32::new(100).unwrap();

@@ -3,12 +3,12 @@ use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek::PublicKey;
 use ed25519_dalek::SecretKey;
+use hex::FromHex;
 use std::convert::TryInto;
 use std::error::Error;
-use std::str;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
-use hex::FromHex;
+use std::str;
 
 pub struct Wallet {
     name: String,
@@ -31,7 +31,7 @@ impl Wallet {
         println!("{}", encoding::to_hex_string(&seed));
         let mut accounts = Vec::new();
         accounts.push(Account::new(0, &seed)?);
-        
+
         let wallet = Wallet {
             name,
             seed,
@@ -42,19 +42,22 @@ impl Wallet {
     }
 
     pub fn load(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open("nanors.wal")?;
+        let file = OpenOptions::new().read(true).open("nanors.wal")?;
         let reader = BufReader::new(file);
-        
+
         // TODO: clean this decoding up, map to hash map?
         for line in reader.lines() {
             let line = line?;
             let mut wal = line.split("|");
-            let (name, ciphertext, nonce) = (wal.next(), wal.next(), wal.next()); 
+            let (name, ciphertext, nonce) = (wal.next(), wal.next(), wal.next());
             let nonce = <[u8; 12]>::from_hex(nonce.expect("nonce not found"))?;
             let ciphertext = hex::decode(ciphertext.expect("ciphertext not found"))?;
-            let seed = encoding::aes_gcm_decrypt(pw.as_bytes(), nonce, &ciphertext, name.expect("name not found").as_bytes());
+            let seed = encoding::aes_gcm_decrypt(
+                pw.as_bytes(),
+                nonce,
+                &ciphertext,
+                name.expect("name not found").as_bytes(),
+            );
             println!("{}", encoding::to_hex_string(&seed));
         }
         unimplemented!();
@@ -62,13 +65,20 @@ impl Wallet {
     }
 
     fn save_wallet(&self, pw: &str) -> Result<(), Box<dyn Error>> {
-        let (ciphertext, nonce) = encoding::aes_gcm_encrypt(pw.as_bytes(), &self.seed, &self.name.as_bytes());
+        let (ciphertext, nonce) =
+            encoding::aes_gcm_encrypt(pw.as_bytes(), &self.seed, &self.name.as_bytes());
         let mut file = OpenOptions::new()
             .append(true)
             .create(true)
             .open("nanors.wal")?;
         //println!("{:?}", &ciphertext);
-        writeln!(file, "{}|{}|{}", self.name, encoding::to_hex_string(&ciphertext), encoding::to_hex_string(&nonce));
+        writeln!(
+            file,
+            "{}|{}|{}",
+            self.name,
+            encoding::to_hex_string(&ciphertext),
+            encoding::to_hex_string(&nonce)
+        );
         Ok(())
     }
 }

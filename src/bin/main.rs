@@ -45,7 +45,7 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
     menu[idx_selected]
 }
 
-fn wallet_prompt(confirm_pass : bool) -> (String, String) {
+fn wallet_prompt(confirm_pass: bool) -> (String, String) {
     let name = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("wallet name:")
         .validate_with(|input: &String| -> Result<(), &str> {
@@ -65,8 +65,7 @@ fn wallet_prompt(confirm_pass : bool) -> (String, String) {
             .with_confirmation("repeat password", "error: the passwords don't match.")
             .interact()
             .unwrap();
-    }
-    else {
+    } else {
         password = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("password")
             .interact()
@@ -75,12 +74,11 @@ fn wallet_prompt(confirm_pass : bool) -> (String, String) {
     (name, password)
 }
 
-
 fn wallet_new() {
     let (name, password) = wallet_prompt(true);
     match wallet::Wallet::new(&name, &password) {
         Ok(w) => println!("success"),
-        Err(e) => eprintln!("{}", e)
+        Err(e) => eprintln!("{}", e),
     };
 }
 
@@ -88,6 +86,6 @@ fn wallet_load() {
     let (name, password) = wallet_prompt(false);
     match wallet::Wallet::load(&name, &password) {
         Ok(w) => println!("success"),
-        Err(e) => eprintln!("{}", e)
+        Err(e) => eprintln!("{}", e),
     };
 }

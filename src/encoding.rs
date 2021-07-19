@@ -1,17 +1,18 @@
+use aes_gcm::aead::{Aead, NewAead};
+use aes_gcm::{Aes128Gcm, Nonce};
+use hkdf::Hkdf;
+use sha2::Sha256;
 use bitvec::prelude::*;
 use blake2::digest::{Update, VariableOutput};
 use blake2::VarBlake2b;
-use aes_gcm::{Aes128Gcm, Key, Nonce}; // Or `Aes128Gcm`
-use aes_gcm::aead::{Aead, NewAead};
-use std::num::NonZeroU32;
 use rand::Rng;
+
 
 const B32_ENCODING_SIZE: usize = 5;
 const ALPHABET_ARR: [char; 32] = [
     '1', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
     'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'w', 'x', 'y', 'z',
 ];
-const SALT: [u8; 7] = [8, 6, 7, 5, 3, 0, 9];
 
 pub fn to_hex_string(bytes: &[u8]) -> String {
     let strs: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
@@ -34,13 +35,33 @@ pub fn generate_nano_seed() -> [u8; 32] {
     random_bytes
 }
 
-pub fn aes_gcm_encrypt(pw : &[u8], data : &[u8]) -> (Vec<u8>, [u8; 12]) {
-    let key = aes_gcm::Key::from_slice(pw);
+pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info : &[u8]) -> (Vec<u8>, [u8; 12]) {
+    let key = hkdf_pw_expand(pw, hkdf_info);
+    let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
     let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit. TODO: use a sequence..
     let nonce = Nonce::from_slice(&nonce_data);
-    (cipher.encrypt(nonce, data).expect("encrypt failure"), nonce_data)
+    (
+        cipher.encrypt(nonce, data).expect("encrypt failure"),
+        nonce_data,
+    )
 }
+
+pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info : &[u8]) -> Vec<u8> {
+    let key = hkdf_pw_expand(pw, hkdf_info);
+    let key = aes_gcm::Key::from_slice(&key);
+    let cipher = Aes128Gcm::new(key);
+    let nonce = Nonce::from_slice(&nonce);
+    cipher.decrypt(nonce, ciphertext).expect("decrypt failure")
+}
+
+pub fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] { 
+    let mut okm = [0u8; 16]; // 128bit AES
+    let h = Hkdf::<Sha256>::new(None, ikm);
+    h.expand(info, &mut okm).expect("hdkf expand - something went wrong");
+    okm
+}
+
 
 /*pub fn pbkdf2_key(key_buffer : [u8; 32], pw : &[u8]) -> [u8; 32] {
     let iters = NonZeroU32::new(100).unwrap();

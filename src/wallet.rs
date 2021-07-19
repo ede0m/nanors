@@ -6,7 +6,9 @@ use ed25519_dalek::SecretKey;
 use std::convert::TryInto;
 use std::error::Error;
 use std::str;
-
+use std::fs::OpenOptions;
+use std::io::{prelude::*, BufReader};
+use hex::FromHex;
 
 pub struct Wallet {
     name: String,
@@ -21,46 +23,64 @@ pub struct Account {
     account: String,
 }
 
-
 impl Wallet {
-    pub fn new(name: &str, pw : &str) -> Result<Wallet, Box<dyn Error>> {
+    pub fn new(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
         let name = String::from(name);
         let seed = encoding::generate_nano_seed();
-        let encrypted = Wallet::encrypt_wallet_as_str(&name, &seed, pw)?;
 
-        //println!("{}", encoding::to_hex_string(&seed));
+        println!("{}", encoding::to_hex_string(&seed));
         let mut accounts = Vec::new();
         accounts.push(Account::new(0, &seed)?);
-        Ok(Wallet {
+        
+        let wallet = Wallet {
             name,
             seed,
             accounts,
-        })
+        };
+        wallet.save_wallet(pw)?;
+        Ok(wallet)
     }
 
-    fn encrypt_wallet_as_str(name: &str, seed: &[u8; 32], pw : &str) -> Result<String, Box<dyn Error>> {
-        let encrypted_seed_nonce = encoding::aes_gcm_encrypt(pw.as_bytes(), seed);
-        let mut ret = String::from(name);
-        ret.push('|');
-        ret.push_str(str::from_utf8(encrypted_seed_nonce.0.as_slice())?); // seed
-        ret.push('|');
-        ret.push_str(str::from_utf8(&encrypted_seed_nonce.1)?); // nonce
-        Ok(ret)
+    pub fn load(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .open("nanors.wal")?;
+        let reader = BufReader::new(file);
+        
+        // TODO: clean this decoding up, map to hash map?
+        for line in reader.lines() {
+            let line = line?;
+            let mut wal = line.split("|");
+            let (name, ciphertext, nonce) = (wal.next(), wal.next(), wal.next()); 
+            let nonce = <[u8; 12]>::from_hex(nonce.expect("nonce not found"))?;
+            let ciphertext = hex::decode(ciphertext.expect("ciphertext not found"))?;
+            let seed = encoding::aes_gcm_decrypt(pw.as_bytes(), nonce, &ciphertext, name.expect("name not found").as_bytes());
+            println!("{}", encoding::to_hex_string(&seed));
+        }
+        unimplemented!();
+        //Ok(Wallet{})
     }
 
-    pub fn load(name: &str, pw : &str) -> Result<Wallet, Box<dyn Error>> {
-        unimplemented!("load isn't quxable");
+    fn save_wallet(&self, pw: &str) -> Result<(), Box<dyn Error>> {
+        let (ciphertext, nonce) = encoding::aes_gcm_encrypt(pw.as_bytes(), &self.seed, &self.name.as_bytes());
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open("nanors.wal")?;
+        //println!("{:?}", &ciphertext);
+        writeln!(file, "{}|{}|{}", self.name, encoding::to_hex_string(&ciphertext), encoding::to_hex_string(&nonce));
+        Ok(())
     }
 }
 
 impl Account {
-    pub fn new(index: u32, seed: &[u8; 32]) -> Result<Account, Box<dyn std::error::Error>> {
+    pub fn new(index: u32, seed: &[u8; 32]) -> Result<Account, Box<dyn Error>> {
         let sk = Account::create_sk(&index, seed).unwrap();
-        println!("{}", encoding::to_hex_string(&sk));
+        //println!("{}", encoding::to_hex_string(&sk));
         let pk = Account::create_pk(&sk).unwrap();
-        println!("{}", encoding::to_hex_string(&pk));
+        //println!("{}", encoding::to_hex_string(&pk));
         let account = Account::create_addr(&pk).unwrap();
-        println!("{}", account);
+        //println!("{}", account);
         Ok(Account {
             index,
             sk,
@@ -70,7 +90,7 @@ impl Account {
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
-    fn create_sk(index: &u32, seed: &[u8; 32]) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    fn create_sk(index: &u32, seed: &[u8; 32]) -> Result<[u8; 32], Box<dyn Error>> {
         let mut i_buf = [0; 4];
         BigEndian::write_u32(&mut i_buf, *index); // index as bytes
         let input: Vec<u8> = seed.iter().chain(&i_buf).cloned().collect();
@@ -80,7 +100,7 @@ impl Account {
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#account-public-key
-    fn create_pk(sk: &[u8; 32]) -> Result<[u8; 32], Box<dyn std::error::Error>> {
+    fn create_pk(sk: &[u8; 32]) -> Result<[u8; 32], Box<dyn Error>> {
         // the secret key of the ed25519 pair is the nano sk.
         let ed25519_sk = SecretKey::from_bytes(sk)?;
         /* ed25519-dalek hardcoded sha512.. so i patch a local version
@@ -91,7 +111,7 @@ impl Account {
         Ok(ed25519_pk.to_bytes().try_into()?)
     }
 
-    fn create_addr(pk: &[u8; 32]) -> Result<String, Box<dyn std::error::Error>> {
+    fn create_addr(pk: &[u8; 32]) -> Result<String, Box<dyn Error>> {
         let mut s = String::new();
         // checksum of 5 bytes of pk
         let mut cs_box = encoding::blake2b(5, pk)?;

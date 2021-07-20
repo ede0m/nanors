@@ -41,27 +41,40 @@ impl Wallet {
         Ok(wallet)
     }
 
-    pub fn load(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
+    pub fn load(w_name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
         let file = OpenOptions::new().read(true).open("nanors.wal")?;
         let reader = BufReader::new(file);
-
+        let mut seed = [0u8; 32];
+        let (mut name, mut n_acct, mut ciphertext, mut nonce) =
+            (String::new(), 0, vec![], [0u8; 12]);
         // TODO: clean this decoding up, map to hash map?
         for line in reader.lines() {
             let line = line?;
             let mut wal = line.split("|");
-            let (name, ciphertext, nonce) = (wal.next(), wal.next(), wal.next());
-            let nonce = <[u8; 12]>::from_hex(nonce.expect("nonce not found"))?;
-            let ciphertext = hex::decode(ciphertext.expect("ciphertext not found"))?;
-            let seed = encoding::aes_gcm_decrypt(
-                pw.as_bytes(),
-                nonce,
-                &ciphertext,
-                name.expect("name not found").as_bytes(),
-            );
-            println!("{}", encoding::to_hex_string(&seed));
+            name = String::from(wal.next().expect("name not found"));
+            if name == w_name {
+                n_acct = wal.next().expect("nacct not found").parse::<u32>().unwrap();
+                ciphertext = hex::decode(wal.next().expect("ciphertext not found"))?;
+                nonce = <[u8; 12]>::from_hex(wal.next().expect("nonce not found"))?;
+                seed =
+                    encoding::aes_gcm_decrypt(pw.as_bytes(), nonce, &ciphertext, name.as_bytes())
+                        .try_into()
+                        .expect("decrypt fail seed size");
+            }
         }
-        unimplemented!();
-        //Ok(Wallet{})
+        if !name.is_empty() && n_acct > 0 {
+            let mut accounts = Vec::new();
+            for i in 0..n_acct {
+                accounts.push(Account::new(i, &seed)?);
+            }
+            Ok(Wallet {
+                name,
+                seed,
+                accounts,
+            })
+        } else {
+            Err(format!("wallet {} not found", w_name).into())
+        }
     }
 
     fn save_wallet(&self, pw: &str) -> Result<(), Box<dyn Error>> {
@@ -74,8 +87,9 @@ impl Wallet {
         //println!("{:?}", &ciphertext);
         writeln!(
             file,
-            "{}|{}|{}",
+            "{}|{}|{}|{}",
             self.name,
+            self.accounts.len(),
             encoding::to_hex_string(&ciphertext),
             encoding::to_hex_string(&nonce)
         );

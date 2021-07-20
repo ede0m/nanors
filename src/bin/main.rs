@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\n    nanors v0.1.0\n    -------------\n");
     loop {
-        let selection = menu_select(main_menu, "select an sub-menu:");
+        let selection = menu_select(main_menu, "sub-menu:");
         match selection {
             "wallet" => run_wallet_menu(wallet_menu),
             "exit" => break,
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn run_wallet_menu(menu: &[&str]) {
     loop {
-        let selection = menu_select(menu, "select a wallet option:");
+        let selection = menu_select(menu, "wallet options:");
         match selection {
             "new" => wallet_new(),
             "load" => wallet_load(),
@@ -77,8 +77,8 @@ fn wallet_prompt(confirm_pass: bool) -> (String, String) {
 fn wallet_new() {
     let (name, password) = wallet_prompt(true);
     match wallet::Wallet::new(&name, &password) {
-        Ok(w) => println!("success"),
-        Err(e) => eprintln!("{}", e),
+        Ok(w) => run_account_menu(w),
+        Err(e) => eprintln!("\n{}\n", e),
     };
 }
 
@@ -86,19 +86,20 @@ fn wallet_load() {
     let (name, password) = wallet_prompt(false);
     match wallet::Wallet::load(&name, &password) {
         Ok(w) => run_account_menu(w),
-        Err(e) => eprintln!("{}", e),
+        Err(e) => eprintln!("\n{}\n", e),
     };
 }
 
 fn run_account_menu(wallet: wallet::Wallet) {
     let account_menu = &["new", "show", "back"];
     loop {
-        let selection = menu_select(account_menu, format!("[wallet:{}]:", wallet.name).as_str());
+        println!("\n[nano:{}]:\n", wallet.name);
+        let selection = menu_select(account_menu, "account options:");
         match selection {
             "new" => break,
             "show" => break,
             "back" => break,
-            _ => println!("{} unrecognized", selection),
+            _ => println!("\n{} unrecognized\n", selection),
         }
     }
 }

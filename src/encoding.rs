@@ -41,12 +41,20 @@ pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u
     )
 }
 
-pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info: &[u8]) -> Vec<u8> {
+pub fn aes_gcm_decrypt(
+    pw: &[u8],
+    nonce: [u8; 12],
+    ciphertext: &[u8],
+    hkdf_info: &[u8],
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let key = hkdf_pw_expand(pw, hkdf_info);
     let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
     let nonce = Nonce::from_slice(&nonce);
-    cipher.decrypt(nonce, ciphertext).expect("decrypt failure")
+    match cipher.decrypt(nonce, ciphertext) {
+        Ok(pt) => Ok(pt),
+        Err(e) => Err("could not decrypt wallet key".into()),
+    }
 }
 
 fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
@@ -96,6 +104,7 @@ mod tests {
         let hkdf_info = b"uniqueinfo";
         let (ciphertext, nonce) = aes_gcm_encrypt(pw, data, hkdf_info);
         let og: [u8; 9] = aes_gcm_decrypt(pw, nonce, &ciphertext, hkdf_info)
+            .unwrap()
             .as_slice()
             .try_into()
             .expect("failed decrypt content size");

@@ -11,9 +11,9 @@ use std::io::{prelude::*, BufReader};
 use std::str;
 
 pub struct Wallet {
-    name: String,
+    pub name: String,
+    pub accounts: Vec<Account>,
     seed: [u8; 32],
-    accounts: Vec<Account>,
 }
 
 pub struct Account {
@@ -27,8 +27,6 @@ impl Wallet {
     pub fn new(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
         let name = String::from(name);
         let seed = encoding::generate_nano_seed();
-
-        println!("{}", encoding::to_hex_string(&seed));
         let mut accounts = Vec::new();
         accounts.push(Account::new(0, &seed)?);
 
@@ -47,19 +45,22 @@ impl Wallet {
         let mut seed = [0u8; 32];
         let (mut name, mut n_acct, mut ciphertext, mut nonce) =
             (String::new(), 0, vec![], [0u8; 12]);
-        // TODO: clean this decoding up, map to hash map?
         for line in reader.lines() {
             let line = line?;
             let mut wal = line.split("|");
             name = String::from(wal.next().expect("name not found"));
             if name == w_name {
-                n_acct = wal.next().expect("nacct not found").parse::<u32>().unwrap();
-                ciphertext = hex::decode(wal.next().expect("ciphertext not found"))?;
-                nonce = <[u8; 12]>::from_hex(wal.next().expect("nonce not found"))?;
+                n_acct = wal
+                    .next()
+                    .ok_or("n_acct not found")?
+                    .parse::<u32>()
+                    .unwrap();
+                ciphertext = hex::decode(wal.next().ok_or("ciphertext not found")?)?;
+                nonce = <[u8; 12]>::from_hex(wal.next().ok_or("nonce not found")?)?;
                 seed =
                     encoding::aes_gcm_decrypt(pw.as_bytes(), nonce, &ciphertext, name.as_bytes())
-                        .try_into()
-                        .expect("decrypt fail seed size");
+                        .as_slice()
+                        .try_into()?;
             }
         }
         if !name.is_empty() && n_acct > 0 {
@@ -84,14 +85,13 @@ impl Wallet {
             .append(true)
             .create(true)
             .open("nanors.wal")?;
-        //println!("{:?}", &ciphertext);
         writeln!(
             file,
             "{}|{}|{}|{}",
             self.name,
             self.accounts.len(),
-            encoding::to_hex_string(&ciphertext),
-            encoding::to_hex_string(&nonce)
+            hex::encode_upper(&ciphertext),
+            hex::encode_upper(&nonce)
         );
         Ok(())
     }
@@ -100,11 +100,8 @@ impl Wallet {
 impl Account {
     pub fn new(index: u32, seed: &[u8; 32]) -> Result<Account, Box<dyn Error>> {
         let sk = Account::create_sk(&index, seed).unwrap();
-        //println!("{}", encoding::to_hex_string(&sk));
         let pk = Account::create_pk(&sk).unwrap();
-        //println!("{}", encoding::to_hex_string(&pk));
         let account = Account::create_addr(&pk).unwrap();
-        //println!("{}", account);
         Ok(Account {
             index,
             sk,
@@ -160,7 +157,6 @@ impl Account {
 mod tests {
 
     use super::*;
-    use crate::encoding;
 
     const TEST_SEED: [u8; 32] = [
         137, 197, 104, 229, 75, 120, 185, 178, 9, 190, 248, 22, 140, 246, 140, 143, 247, 174, 97,
@@ -172,7 +168,7 @@ mod tests {
         let index = 0;
         let sk = Account::create_sk(&index, &TEST_SEED).unwrap();
         assert_eq!(
-            encoding::to_hex_string(&sk),
+            hex::encode_upper(&sk),
             "0E7EF55A55A33AE9335388ED94A9883EAF7CCC354B9025EAA52CEAA40C741B62"
         );
     }
@@ -183,7 +179,7 @@ mod tests {
         let sk = Account::create_sk(&index, &TEST_SEED).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
         assert_eq!(
-            encoding::to_hex_string(&pk),
+            hex::encode_upper(&pk),
             "30878ECBB5119B0FE4E986589ECFD2BD915D3A6CBA4843C3EE547DE649AD2BC0"
         );
     }

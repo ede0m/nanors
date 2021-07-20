@@ -9,7 +9,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //node.connect().await?;
 
     let main_menu = &["wallet"];
-
     let wallet_menu = &["new", "load", "show", "back"];
 
     println!("\n    nanors v0.1.0\n    -------------\n");
@@ -17,6 +16,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let selection = menu_select(main_menu, "select an sub-menu:");
         match selection {
             "wallet" => run_wallet_menu(wallet_menu),
+            "exit" => break,
             _ => println!("{} unrecognized", selection),
         }
     }
@@ -85,7 +85,20 @@ fn wallet_new() {
 fn wallet_load() {
     let (name, password) = wallet_prompt(false);
     match wallet::Wallet::load(&name, &password) {
-        Ok(w) => println!("success"),
+        Ok(w) => run_account_menu(w),
         Err(e) => eprintln!("{}", e),
     };
+}
+
+fn run_account_menu(wallet: wallet::Wallet) {
+    let account_menu = &["new", "show", "back"];
+    loop {
+        let selection = menu_select(account_menu, format!("[wallet:{}]:", wallet.name).as_str());
+        match selection {
+            "new" => break,
+            "show" => break,
+            "back" => break,
+            _ => println!("{} unrecognized", selection),
+        }
+    }
 }

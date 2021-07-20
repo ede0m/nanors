@@ -13,11 +13,6 @@ const ALPHABET_ARR: [char; 32] = [
     'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'w', 'x', 'y', 'z',
 ];
 
-pub fn to_hex_string(bytes: &[u8]) -> String {
-    let strs: Vec<String> = bytes.iter().map(|b| format!("{:02X}", b)).collect();
-    strs.join("")
-}
-
 // credit to https://github.com/feeless/feeless/blob/main/src/keys/address.rs
 pub fn base32_nano_encode(bits: &BitSlice<Msb0, u8>) -> String {
     let mut s = String::new();
@@ -54,7 +49,7 @@ pub fn aes_gcm_decrypt(pw: &[u8], nonce: [u8; 12], ciphertext: &[u8], hkdf_info:
     cipher.decrypt(nonce, ciphertext).expect("decrypt failure")
 }
 
-pub fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
+fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
     let mut okm = [0u8; 16]; // 128bit AES
     let h = Hkdf::<Sha256>::new(None, ikm);
     h.expand(info, &mut okm)
@@ -62,7 +57,17 @@ pub fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
     okm
 }
 
-/*pub fn pbkdf2_key(key_buffer : [u8; 32], pw : &[u8]) -> [u8; 32] {
+pub fn blake2b(
+    digest_size: usize,
+    message: &[u8],
+) -> Result<Box<[u8]>, Box<dyn std::error::Error>> {
+    let mut hasher = VarBlake2b::new(digest_size)?;
+    hasher.update(message);
+    Ok(hasher.finalize_boxed())
+}
+
+/*
+pub fn pbkdf2_key(key_buffer : [u8; 32], pw : &[u8]) -> [u8; 32] {
     let iters = NonZeroU32::new(100).unwrap();
     derive(PBKDF2_HMAC_SHA256, iters, &SALT, pw, &mut key_buffer);
     key_buffer
@@ -78,11 +83,22 @@ pub fn sealing_key(key : &[u8; 32]) -> Result<SealingKey, Box<dyn std::error::Er
 }
 */
 
-pub fn blake2b(
-    digest_size: usize,
-    message: &[u8],
-) -> Result<Box<[u8]>, Box<dyn std::error::Error>> {
-    let mut hasher = VarBlake2b::new(digest_size)?;
-    hasher.update(message);
-    Ok(hasher.finalize_boxed())
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use std::convert::TryInto;
+
+    #[test]
+    fn can_decrypt() {
+        let pw = b"strong password";
+        let data = b"sensitive";
+        let hkdf_info = b"uniqueinfo";
+        let (ciphertext, nonce) = aes_gcm_encrypt(pw, data, hkdf_info);
+        let og: [u8; 9] = aes_gcm_decrypt(pw, nonce, &ciphertext, hkdf_info)
+            .as_slice()
+            .try_into()
+            .expect("failed decrypt content size");
+        assert_eq!(*data, og);
+    }
 }

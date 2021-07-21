@@ -1,13 +1,15 @@
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use nanors::nano;
 use nanors::wallet;
+use std::fs::OpenOptions;
+use std::io::{prelude::*, BufReader};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     //let w = wallet::Wallet::new("gmon");
     //let node = nano::ClientRpc::new("https://mynano.ninja/api/node").expect("error initalizing node client");
     //node.connect().await?;
-
+    
     let main_menu = &["wallet"];
     let wallet_menu = &["new", "load", "show", "back"];
 
@@ -17,23 +19,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         match selection {
             "wallet" => run_wallet_menu(wallet_menu),
             "exit" => break,
-            _ => println!("{} unrecognized", selection),
+            _ => print_err(&format!("{} unrecognized", selection)),
         }
     }
     Ok(())
 }
 
-fn run_wallet_menu(menu: &[&str]) {
-    loop {
-        let selection = menu_select(menu, "wallet options:");
-        match selection {
-            "new" => wallet_new(),
-            "load" => wallet_load(),
-            "show" => continue,
-            "back" => break,
-            _ => println!("{} unrecognized", selection),
-        }
-    }
+fn print_err(msg : &str) {
+    eprintln!("{}", console::style(msg).red());
+}
+
+fn print_show(msg : &str) {
+    eprintln!("{}", console::style(msg).yellow());
 }
 
 fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
@@ -43,6 +40,35 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
         .interact()
         .unwrap();
     menu[idx_selected]
+}
+
+fn run_wallet_menu(menu: &[&str]) {
+    loop {
+        let selection = menu_select(menu, "wallet options:");
+        match selection {
+            "new" => wallet_new(),
+            "load" => wallet_load(),
+            "show" => wallets_show(),
+            "back" => break,
+            _ => print_err(&format!("unrecognized command {}", selection)),
+        }
+    }
+}
+
+fn wallet_new() {
+    let (name, password) = wallet_prompt(true);
+    match wallet::Wallet::new(&name, &password) {
+        Ok(w) => run_account_menu(w),
+        Err(e) => print_err(&format!("\n{}\n", e)),
+    };
+}
+
+fn wallet_load() {
+    let (name, password) = wallet_prompt(false);
+    match wallet::Wallet::load(&name, &password) {
+        Ok(w) => run_account_menu(w),
+        Err(e) => print_err(&format!("\n{}\n", e)),
+    };
 }
 
 fn wallet_prompt(confirm_pass: bool) -> (String, String) {
@@ -58,7 +84,7 @@ fn wallet_prompt(confirm_pass: bool) -> (String, String) {
         })
         .interact_text()
         .unwrap();
-    let mut password = String::new();
+    let password;
     if confirm_pass {
         password = Password::with_theme(&ColorfulTheme::default())
             .with_prompt("password")
@@ -74,21 +100,22 @@ fn wallet_prompt(confirm_pass: bool) -> (String, String) {
     (name, password)
 }
 
-fn wallet_new() {
-    let (name, password) = wallet_prompt(true);
-    match wallet::Wallet::new(&name, &password) {
-        Ok(w) => run_account_menu(w),
-        Err(e) => eprintln!("\n{}\n", e),
-    };
+fn wallets_show() {
+    if let Ok(file) = OpenOptions::new().read(true).open(wallet::WALLET_FILE_PATH) {
+        let reader = BufReader::new(file);
+        println!();
+        for line in reader.lines() {
+            let line = line.unwrap();
+            if let Some(name) = line.split("|").next() {
+                print_show(&format!("  {}", name));
+            }
+        }
+        println!();
+    } else {
+        print_err("\nwallet file not found\n");
+    }
 }
 
-fn wallet_load() {
-    let (name, password) = wallet_prompt(false);
-    match wallet::Wallet::load(&name, &password) {
-        Ok(w) => run_account_menu(w),
-        Err(e) => eprintln!("\n{}\n", e),
-    };
-}
 
 fn run_account_menu(wallet: wallet::Wallet) {
     let account_menu = &["new", "show", "back"];
@@ -97,9 +124,15 @@ fn run_account_menu(wallet: wallet::Wallet) {
         let selection = menu_select(account_menu, "account options:");
         match selection {
             "new" => break,
-            "show" => break,
+            "show" => accounts_show(&wallet.accounts),
             "back" => break,
-            _ => println!("\n{} unrecognized\n", selection),
+            _ => print_err(&format!("\n{} unrecognized\n", selection)),
         }
     }
+}
+
+fn accounts_show(accounts : &Vec<wallet::Account>) {
+    println!();
+    accounts.iter().for_each(|a| print_show(&format!("  {} : {}", a.index, a.addr)));
+    println!();
 }

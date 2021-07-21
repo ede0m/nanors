@@ -74,23 +74,6 @@ pub fn blake2b(
     Ok(hasher.finalize_boxed())
 }
 
-/*
-pub fn pbkdf2_key(key_buffer : [u8; 32], pw : &[u8]) -> [u8; 32] {
-    let iters = NonZeroU32::new(100).unwrap();
-    derive(PBKDF2_HMAC_SHA256, iters, &SALT, pw, &mut key_buffer);
-    key_buffer
-}
-
-pub fn sealing_key(key : &[u8; 32]) -> Result<SealingKey, Box<dyn std::error::Error>> {
-    let key = UnboundKey::new(&AES_128_GCM, key)?;
-    let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit nonces;
-    let nonce = Nonce::try_assume_unique_for_key(&nonce_data)?;
-    SealingKey::new(key, nonce)
-    // would need to implement nonce advance for NOnceSequence trait.. moving to RustCrypto.
-    Ok()
-}
-*/
-
 #[cfg(test)]
 mod tests {
 

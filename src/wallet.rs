@@ -10,22 +10,24 @@ use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
 
+pub const WALLET_FILE_PATH : &str = "nanors.wal";
+
 pub struct Wallet {
     pub name: String,
     pub accounts: Vec<Account>,
 }
 
 pub struct Account {
-    index: u32,
+    pub index: u32,
     sk: [u8; 32],
     pk: [u8; 32],
-    account: String,
+    pub addr: String,
 }
 
 impl Wallet {
     pub fn new(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
         let name = String::from(name);
-        if Wallet::find_wallet(&name).is_some() {
+        if find_local_wallet(&name).is_some() {
             return Err(format!("wallet {} already exists", name).into());
         }
         let seed = encoding::generate_nano_seed();
@@ -37,13 +39,13 @@ impl Wallet {
     }
 
     pub fn load(w_name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
-        let mut seed = [0u8; 32];
-        let (mut name, mut n_acct) = (String::new(), 0);
-        match Wallet::find_wallet(w_name) {
+        let seed;
+        let (name, n_acct);
+        match find_local_wallet(w_name) {
             Some(wstr) => {
                 let mut wal = wstr.split("|");
                 name = String::from(wal.next().ok_or("name not found")?);
-                let wallet_data = Wallet::wallet_from_str(wal)?;
+                let wallet_data = wallet_data_from_str(wal)?;
                 n_acct = wallet_data.0;
                 let ciphertext = wallet_data.1;
                 let nonce = wallet_data.2;
@@ -65,35 +67,6 @@ impl Wallet {
         }
     }
 
-    fn find_wallet(find_name: &str) -> Option<String> {
-        let file = OpenOptions::new()
-            .read(true)
-            .open("nanors.wal")
-            .expect("could not find wallet file");
-        let reader = BufReader::new(file);
-        for line in reader.lines() {
-            let line = line.expect("could not find wallet file");
-            let mut name = String::from(line.split("|").next()?);
-            if name == find_name {
-                return Some(line);
-            }
-        }
-        None
-    }
-
-    fn wallet_from_str<'a, I>(mut wal_iter: I) -> Result<(u32, Vec<u8>, [u8; 12]), Box<dyn Error>>
-    where
-        I: Iterator<Item = &'a str>,
-    {
-        let n_acct = wal_iter
-            .next()
-            .ok_or("n_acct not found")?
-            .parse::<u32>()
-            .unwrap();
-        let ciphertext = hex::decode(wal_iter.next().ok_or("ciphertext not found")?)?;
-        let nonce = <[u8; 12]>::from_hex(wal_iter.next().ok_or("nonce not found")?)?;
-        Ok((n_acct, ciphertext, nonce))
-    }
 
     fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
         let (ciphertext, nonce) =
@@ -101,7 +74,7 @@ impl Wallet {
         let mut file = OpenOptions::new()
             .append(true)
             .create(true)
-            .open("nanors.wal")?;
+            .open(WALLET_FILE_PATH)?;
         writeln!(
             file,
             "{}|{}|{}|{}",
@@ -118,12 +91,12 @@ impl Account {
     pub fn new(index: u32, seed: &[u8; 32]) -> Result<Account, Box<dyn Error>> {
         let sk = Account::create_sk(&index, seed).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
-        let account = Account::create_addr(&pk).unwrap();
+        let addr = Account::create_addr(&pk).unwrap();
         Ok(Account {
             index,
             sk,
             pk,
-            account,
+            addr,
         })
     }
 
@@ -169,6 +142,37 @@ impl Account {
         Ok(s)
     }
 }
+
+fn find_local_wallet(find_name: &str) -> Option<String> {
+    let file = OpenOptions::new()
+        .read(true)
+        .open(WALLET_FILE_PATH)
+        .ok()?;
+    let reader = BufReader::new(file);
+    for line in reader.lines() {
+        let line = line.unwrap();
+        let name = String::from(line.split("|").next()?);
+        if name == find_name {
+            return Some(line);
+        }
+    }
+    None
+}
+
+fn wallet_data_from_str<'a, I>(mut wal_iter: I) -> Result<(u32, Vec<u8>, [u8; 12]), Box<dyn Error>>
+where
+    I: Iterator<Item = &'a str>,
+{
+    let n_acct = wal_iter
+        .next()
+        .ok_or("n_acct not found")?
+        .parse::<u32>()
+        .unwrap();
+    let ciphertext = hex::decode(wal_iter.next().ok_or("ciphertext not found")?)?;
+    let nonce = <[u8; 12]>::from_hex(wal_iter.next().ok_or("nonce not found")?)?;
+    Ok((n_acct, ciphertext, nonce))
+}
+
 
 #[cfg(test)]
 mod tests {

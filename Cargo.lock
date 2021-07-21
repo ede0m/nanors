@@ -644,6 +644,7 @@ dependencies = [
  "bitvec",
  "blake2",
  "byteorder",
+ "console",
  "dialoguer",
  "ed25519-dalek",
  "hex",

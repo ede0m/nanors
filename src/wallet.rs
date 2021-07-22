@@ -10,7 +10,7 @@ use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
 
-pub const WALLET_FILE_PATH : &str = "nanors.wal";
+pub const WALLET_FILE_PATH: &str = "nanors.wal";
 
 pub struct Wallet {
     pub name: String,
@@ -19,9 +19,10 @@ pub struct Wallet {
 
 pub struct Account {
     pub index: u32,
+    pub addr: String,
+    pub pending: Vec<String>,
     sk: [u8; 32],
     pk: [u8; 32],
-    pub addr: String,
 }
 
 impl Wallet {
@@ -67,7 +68,6 @@ impl Wallet {
         }
     }
 
-
     fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
         let (ciphertext, nonce) =
             encoding::aes_gcm_encrypt(pw.as_bytes(), seed, &self.name.as_bytes());
@@ -92,12 +92,18 @@ impl Account {
         let sk = Account::create_sk(&index, seed).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
         let addr = Account::create_addr(&pk).unwrap();
+        let pending: Vec<String> = Vec::new();
         Ok(Account {
             index,
+            addr,
+            pending,
             sk,
             pk,
-            addr,
         })
+    }
+
+    pub fn queue_pending(&mut self, mut hashes: Vec<String>) {
+        self.pending.append(&mut hashes);
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
@@ -144,10 +150,7 @@ impl Account {
 }
 
 fn find_local_wallet(find_name: &str) -> Option<String> {
-    let file = OpenOptions::new()
-        .read(true)
-        .open(WALLET_FILE_PATH)
-        .ok()?;
+    let file = OpenOptions::new().read(true).open(WALLET_FILE_PATH).ok()?;
     let reader = BufReader::new(file);
     for line in reader.lines() {
         let line = line.unwrap();
@@ -172,7 +175,6 @@ where
     let nonce = <[u8; 12]>::from_hex(wal_iter.next().ok_or("nonce not found")?)?;
     Ok((n_acct, ciphertext, nonce))
 }
-
 
 #[cfg(test)]
 mod tests {

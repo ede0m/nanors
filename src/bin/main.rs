@@ -1,15 +1,11 @@
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
-use nanors::nano;
+use nanors::manager;
 use nanors::wallet;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    //let w = wallet::Wallet::new("gmon");
-    //let node = nano::ClientRpc::new("https://mynano.ninja/api/node").expect("error initalizing node client");
-    //node.connect().await?;
-    
     let main_menu = &["wallet"];
     let wallet_menu = &["new", "load", "show", "back"];
 
@@ -25,11 +21,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn print_err(msg : &str) {
+fn print_err(msg: &str) {
     eprintln!("{}", console::style(msg).red());
 }
 
-fn print_show(msg : &str) {
+fn print_show(msg: &str) {
     eprintln!("{}", console::style(msg).yellow());
 }
 
@@ -46,8 +42,8 @@ fn run_wallet_menu(menu: &[&str]) {
     loop {
         let selection = menu_select(menu, "wallet options:");
         match selection {
-            "new" => wallet_new(),
-            "load" => wallet_load(),
+            "new" => wallet_init(false),
+            "load" => wallet_init(true),
             "show" => wallets_show(),
             "back" => break,
             _ => print_err(&format!("unrecognized command {}", selection)),
@@ -55,20 +51,22 @@ fn run_wallet_menu(menu: &[&str]) {
     }
 }
 
-fn wallet_new() {
-    let (name, password) = wallet_prompt(true);
-    match wallet::Wallet::new(&name, &password) {
-        Ok(w) => run_account_menu(w),
+fn wallet_init(load: bool) {
+    let w: Result<wallet::Wallet, Box<dyn std::error::Error>>;
+    if load {
+        let (name, password) = wallet_prompt(false);
+        w = wallet::Wallet::load(&name, &password);
+    } else {
+        let (name, password) = wallet_prompt(true);
+        w = wallet::Wallet::new(&name, &password);
+    }
+    match w {
+        Ok(w) => {
+            let manager = manager::Manager::new(w);
+            run_account_menu(manager)
+        }
         Err(e) => print_err(&format!("\n{}\n", e)),
-    };
-}
-
-fn wallet_load() {
-    let (name, password) = wallet_prompt(false);
-    match wallet::Wallet::load(&name, &password) {
-        Ok(w) => run_account_menu(w),
-        Err(e) => print_err(&format!("\n{}\n", e)),
-    };
+    }
 }
 
 fn wallet_prompt(confirm_pass: bool) -> (String, String) {
@@ -116,23 +114,16 @@ fn wallets_show() {
     }
 }
 
-
-fn run_account_menu(wallet: wallet::Wallet) {
+fn run_account_menu(manager: manager::Manager) {
     let account_menu = &["new", "show", "back"];
     loop {
-        println!("\n[nano:{}]:\n", wallet.name);
+        println!("\n[nano:{}]:\n", manager.curr_wallet_name());
         let selection = menu_select(account_menu, "account options:");
         match selection {
             "new" => break,
-            "show" => accounts_show(&wallet.accounts),
+            "show" => manager.accounts_show().iter().for_each(|s| print_show(&s)),
             "back" => break,
             _ => print_err(&format!("\n{} unrecognized\n", selection)),
         }
     }
-}
-
-fn accounts_show(accounts : &Vec<wallet::Account>) {
-    println!();
-    accounts.iter().for_each(|a| print_show(&format!("  {} : {}", a.index, a.addr)));
-    println!();
 }

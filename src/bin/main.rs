@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         let selection = menu_select(main_menu, "sub-menu:");
         match selection {
-            "wallet" => run_wallet_menu(wallet_menu),
+            "wallet" => run_wallet_menu(wallet_menu).await,
             "exit" => break,
             _ => print_err(&format!("{} unrecognized", selection)),
         }
@@ -38,12 +38,12 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
     menu[idx_selected]
 }
 
-fn run_wallet_menu(menu: &[&str]) {
+async fn run_wallet_menu(menu: &[&str]) {
     loop {
         let selection = menu_select(menu, "wallet options:");
         match selection {
-            "new" => wallet_init(false),
-            "load" => wallet_init(true),
+            "new" => wallet_init(false).await,
+            "load" => wallet_init(true).await,
             "show" => wallets_show(),
             "back" => break,
             _ => print_err(&format!("unrecognized command {}", selection)),
@@ -51,7 +51,7 @@ fn run_wallet_menu(menu: &[&str]) {
     }
 }
 
-fn wallet_init(load: bool) {
+async fn wallet_init(load: bool) {
     let w: Result<wallet::Wallet, Box<dyn std::error::Error>>;
     if load {
         let (name, password) = wallet_prompt(false);
@@ -62,7 +62,7 @@ fn wallet_init(load: bool) {
     }
     match w {
         Ok(w) => {
-            let manager = manager::Manager::new(w);
+            let manager = manager::Manager::new(w).await;
             run_account_menu(manager)
         }
         Err(e) => print_err(&format!("\n{}\n", e)),
@@ -121,7 +121,11 @@ fn run_account_menu(manager: manager::Manager) {
         let selection = menu_select(account_menu, "account options:");
         match selection {
             "new" => break,
-            "show" => manager.accounts_show().iter().for_each(|s| print_show(&s)),
+            "show" => {
+                println!();
+                manager.accounts_show().iter().for_each(|s| print_show(&s));
+                println!();
+            },
             "back" => break,
             _ => print_err(&format!("\n{} unrecognized\n", selection)),
         }

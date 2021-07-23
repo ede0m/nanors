@@ -9,10 +9,15 @@ pub struct Manager {
 }
 
 impl Manager {
-    pub fn new(wallet: wallet::Wallet) -> Manager {
+    pub async fn new(wallet: wallet::Wallet) -> Manager {
         let rpc =
             nano::ClientRpc::new(PUBLIC_NANO_NODE_HOST).expect("error initalizing node client");
-        Manager { rpc, wallet }
+        let mut m = Manager { rpc, wallet };
+        
+        // replace with receive
+        m.queue_pending().await;
+        
+        m
     }
 
     pub fn curr_wallet_name(&self) -> &str {
@@ -23,13 +28,14 @@ impl Manager {
         self.wallet
             .accounts
             .iter()
-            .map(|a| format!("  {} : {}", a.index, a.addr))
+            .map(|a| format!("  {} : {} : {}", a.index, a.addr, a.pending.len()))
             .collect()
     }
 
     async fn queue_pending(&mut self) {
         for a in &mut self.wallet.accounts {
             if let Some(hashes) = self.rpc.pending(&a.addr).await {
+                //println!("{:?}", hashes);
                 a.queue_pending(hashes);
             }
         }

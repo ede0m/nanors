@@ -4,12 +4,14 @@ use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek::PublicKey;
 use ed25519_dalek::SecretKey;
 use hex::FromHex;
+use serde::Deserialize;
 use std::convert::TryInto;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
 
+const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
 
 pub struct Wallet {
@@ -20,9 +22,26 @@ pub struct Wallet {
 pub struct Account {
     pub index: u32,
     pub addr: String,
+    pub balance: u128,
+    pub frontier: String, // option??
+    pub rep: String,
     pub pending: Vec<String>,
     sk: [u8; 32],
     pk: [u8; 32],
+}
+
+#[derive(Deserialize, Debug)]
+pub struct NanoBlock {
+    #[serde(rename(deserialize = "type"))]
+    kind: String,
+    account: String,
+    previous: String,
+    representative: String,
+    balance: Option<String>,
+    link: Option<String>,
+    link_as_account: Option<String>,
+    signature: String,
+    work: String,
 }
 
 impl Wallet {
@@ -92,14 +111,41 @@ impl Account {
         let sk = Account::create_sk(&index, seed).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
         let addr = Account::create_addr(&pk).unwrap();
+        let (frontier, rep, balance) = (String::from("0"), String::from(DEFUALT_REP), 0);
         let pending: Vec<String> = Vec::new();
         Ok(Account {
             index,
             addr,
+            balance,
+            frontier,
+            rep,
             pending,
             sk,
             pk,
         })
+    }
+
+    pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
+        self.balance = balance;
+        self.frontier = frontier;
+        self.rep = rep;
+    }
+
+    pub fn create_block(&self, new_balance: u128, link: &str) -> NanoBlock {
+        // todo: signing algo
+        //
+
+        NanoBlock {
+            kind: String::from("state"),
+            account: String::from(&self.addr),
+            previous: String::from(&self.frontier),
+            representative: String::from(&self.rep),
+            balance: Some(new_balance.to_string()),
+            link: Some(link.to_string()),
+            link_as_account: None,
+            signature: String::new(), // todo!
+            work: String::new(),      // todo!
+        }
     }
 
     pub fn queue_pending(&mut self, mut hashes: Vec<String>) {

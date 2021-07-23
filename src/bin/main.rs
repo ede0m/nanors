@@ -125,7 +125,7 @@ fn run_account_menu(manager: manager::Manager) {
                 println!();
                 manager.accounts_show().iter().for_each(|s| print_show(&s));
                 println!();
-            },
+            }
             "back" => break,
             _ => print_err(&format!("\n{} unrecognized\n", selection)),
         }

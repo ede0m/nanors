@@ -62,7 +62,9 @@ async fn wallet_init(load: bool) {
     }
     match w {
         Ok(w) => {
-            let manager = manager::Manager::new(w).await;
+            let manager = manager::Manager::new(w)
+                .await
+                .expect("manager creation failed");
             run_account_menu(manager)
         }
         Err(e) => print_err(&format!("\n{}\n", e)),

@@ -6,6 +6,7 @@ use blake2::VarBlake2b;
 use hkdf::Hkdf;
 use rand::Rng;
 use sha2::Sha256;
+use std::convert::TryInto;
 
 const B32_ENCODING_SIZE: usize = 5;
 const ALPHABET_ARR: [char; 32] = [
@@ -25,15 +26,22 @@ pub fn base32_nano_encode(bits: &BitSlice<Msb0, u8>) -> String {
 }
 
 pub fn generate_nano_seed() -> [u8; 32] {
-    let random_bytes = rand::thread_rng().gen::<[u8; 32]>();
-    random_bytes
+    rand::thread_rng().gen::<[u8; 32]>()
+}
+
+pub fn nano_work_hash(prev: &[u8], nonce: &[u8; 8]) -> Result<[u8; 8], Box<dyn std::error::Error>> {
+    let to_hash = [nonce, prev].concat();
+    // threshold is 8 bytes
+    let th_box = blake2b(8, &to_hash)?;
+    Ok((*th_box).try_into()?)
 }
 
 pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u8; 12]) {
     let key = hkdf_pw_expand(pw, hkdf_info);
     let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
-    let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit. TODO: use a sequence..
+    let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit. todo: use sequence
+                                                           //let nonce_data = nonce::<12>();
     let nonce = Nonce::from_slice(&nonce_data);
     (
         cipher.encrypt(nonce, data).expect("encrypt failure"),

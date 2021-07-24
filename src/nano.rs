@@ -43,6 +43,16 @@ pub struct RPCBlockInfoResp {
     pub contents: wallet::NanoBlock,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct RPCTelemetryResp {
+    block_count: String,
+    peer_count: String,
+    major_version: String,
+    minor_version: String,
+    patch_version: String,
+    pub active_difficulty: String,
+}
+
 impl ClientRpc {
     pub fn new(addr: &str) -> Result<ClientRpc> {
         let client = reqwest::Client::builder().build()?;
@@ -52,45 +62,58 @@ impl ClientRpc {
         })
     }
 
-    pub async fn connect(&self) -> Result<()> {
-        let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "version")]));
-        let v = self.rpc_post::<HashMap<String, String>>(r).await;
+    pub async fn connect(&self) -> Option<RPCTelemetryResp> {
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "telemetry")]));
+        let v = self.rpc_post::<RPCTelemetryResp>(r).await;
         match v {
-            Err(e) => eprintln!(
-                "\n node connection unsucessful. please try a different node.\n error: {:#?}",
-                e
-            ),
-            Ok(v) => println!("\n node connection successful:\n {:#?}\n", v),
+            Err(e) => {
+                eprintln!(
+                    "\n node connection unsucessful. please try a different node.\n error: {:#?}",
+                    e
+                );
+                None
+            }
+            Ok(v) => Some({
+                println!("connected: {:?}", v);
+                v.unwrap()
+            }),
         }
-        Ok(())
     }
 
     pub async fn block_info(&self, hash: &str) -> Option<RPCBlockInfoResp> {
-        let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "block_info"), ("json_block", "true"), ("hash", hash)]));
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([
+            ("action", "block_info"),
+            ("json_block", "true"),
+            ("hash", hash),
+        ]));
         match self.rpc_post::<RPCBlockInfoResp>(r).await {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
             }
-            Ok(v) => { 
-                //println!("{:?}", v); 
+            Ok(v) => {
+                //println!("{:?}", v);
                 Some(v.unwrap())
-            },
+            }
         }
     }
 
-    pub async fn account_info(&self, acct: &str) -> Option<Option<RPCAccountInfoResp>> {
-        let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "account_info"),("representative", "true"), ("account", acct)]));
+    pub async fn account_info(&self, acct: &str) -> Option<RPCAccountInfoResp> {
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([
+            ("action", "account_info"),
+            ("representative", "true"),
+            ("account", acct),
+        ]));
         match self.rpc_post::<RPCAccountInfoResp>(r).await {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
             }
-            Ok(v) => { 
-                Some(v)
+            Ok(v) => match v {
+                Some(v) => Some(v),
+                None => None,
             },
         }
-
     }
 
     // https://docs.nano.org/commands/rpc-protocol/#pending
@@ -113,16 +136,10 @@ impl ClientRpc {
     where
         T: DeserializeOwned,
     {
-        let resp = self
-            .client
-            .post(&self.server_addr)
-            .json(&r)
-            .send()
-            .await?;
+        let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         match resp.json::<T>().await {
             Ok(t) => Ok(Some(t)),
-            Err(_) => Ok(None), 
+            Err(_) => Ok(None),
         }
-  
     }
 }

@@ -10,7 +10,6 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
-use std::time::SystemTime;
 
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
@@ -26,9 +25,8 @@ pub struct Account {
     pub balance: u128,
     pub frontier: String, // option??
     pub rep: String,
-    pub pending: Vec<String>,
+    pub pk: [u8; 32],
     sk: [u8; 32],
-    pk: [u8; 32],
 }
 
 #[derive(Deserialize, Debug)]
@@ -113,14 +111,12 @@ impl Account {
         let pk = Account::create_pk(&sk).unwrap();
         let addr = Account::create_addr(&pk).unwrap();
         let (frontier, rep, balance) = (String::from("0"), String::from(DEFUALT_REP), 0);
-        let pending: Vec<String> = Vec::new();
         Ok(Account {
             index,
             addr,
             balance,
             frontier,
             rep,
-            pending,
             sk,
             pk,
         })
@@ -136,9 +132,9 @@ impl Account {
         &self,
         new_balance: u128,
         link: &str,
-        work_threshold: &[u8; 8],
+        work: &str,
     ) -> NanoBlock {
-        let work = self.work(work_threshold).unwrap();
+
         // todo: signing algo
         NanoBlock {
             kind: String::from("state"),
@@ -149,39 +145,8 @@ impl Account {
             link: Some(link.to_string()),
             link_as_account: None,
             signature: String::new(), // todo!
-            work: String::new(),      // todo!
+            work: String::from(work),
         }
-    }
-
-    //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
-    fn work(&self, threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
-        let previous;
-        if &self.frontier == "0" {
-            previous = self.pk; // open block
-        } else {
-            previous = hex::decode(&self.frontier)?.as_slice().try_into()?;
-        }
-        let mut nonce: u64 = 0;
-        let now = SystemTime::now();
-        loop {
-            // TODO: disbatch threads to do work
-            let th = encoding::nano_work_hash(&previous, &nonce.to_be_bytes())?;
-            println!(
-                "computed: {:02x?}\t{}\t\tthreshold: {:02x?}\t{}",
-                th,
-                u64::from_be_bytes(th),
-                threshold,
-                u64::from_be_bytes(*threshold)
-            );
-            if u64::from_be_bytes(th) >= u64::from_be_bytes(*threshold) {
-                let elapsed_min = (now.elapsed()?.as_secs()) / 60;
-                println!("pow complete in {} minutes: {:?}", elapsed_min, nonce.to_be_bytes());
-                return Ok(nonce.to_be_bytes());
-            }
-            nonce += 1;
-        }
-        // todo: validate threshold.
-        Err("failed to find work".into())
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed

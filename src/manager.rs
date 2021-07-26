@@ -2,14 +2,17 @@ use crate::encoding;
 use crate::nano;
 use crate::wallet;
 
-use std::sync::{mpsc::{self, Sender, Receiver}, Arc, Mutex};
 use std::convert::TryInto;
 use std::error::Error;
+use std::sync::{
+    mpsc::{self, Receiver, Sender},
+    Arc, Mutex,
+};
 use std::time::SystemTime;
 
 const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
 const RECV_DIFFICULTY: &str = "fffffe0000000000";
-const POW_LOCAL_WORKERS : u64 = 5;
+const POW_LOCAL_WORKERS: u64 = 5;
 
 pub struct Manager {
     pub rpc: nano::ClientRpc,
@@ -88,36 +91,17 @@ impl Manager {
     }
 
     //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
-    fn pow_local(
-        previous: [u8; 32],
-        threshold: &[u8; 8],
-    ) -> Result<[u8; 8], Box<dyn Error>> {
-
+    fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
         let threshold = threshold.clone();
-        let (tx, rx) : (Sender<[u8; 8]>, Receiver<[u8; 8]>) = mpsc::channel();
+        let (tx, rx): (Sender<[u8; 8]>, Receiver<[u8; 8]>) = mpsc::channel();
         let found = Arc::new(Mutex::new(false));
-        let now = SystemTime::now(); 
-        let mut handles = vec![];     
+        let now = SystemTime::now();
+        let mut handles = vec![];
         // dispatch workers
         for i in 0..POW_LOCAL_WORKERS {
             let (sender, arc) = (tx.clone(), found.clone());
             let handle = std::thread::spawn(move || {
-                let seg_size = 0xffffffffffffffff / POW_LOCAL_WORKERS;
-                let (low, high) = (seg_size*i, seg_size*(i+1));
-                for nonce in low..high {  
-                    let found = *arc.lock().unwrap();
-                    if found {
-                        break;
-                    }
-                    else {
-                        if let Ok(th) = encoding::nano_work_hash(&previous, &nonce.to_be_bytes()) {
-                            if u64::from_be_bytes(th) >= u64::from_be_bytes(threshold) {
-                                sender.send(nonce.to_be_bytes()).unwrap();
-                                break;
-                            }
-                        }
-                    }  
-                }
+                Manager::pow_local_segment(i, &previous, &threshold, sender, arc);
             });
             handles.push(handle);
         }
@@ -130,5 +114,27 @@ impl Manager {
         }
         // todo: validate threshold.
         Ok(work)
+    }
+
+    fn pow_local_segment(
+        i: u64,
+        previous: &[u8; 32],
+        threshold: &[u8; 8],
+        sender: Sender<[u8; 8]>,
+        found: Arc<Mutex<bool>>,
+    ) {
+        let seg_size = 0xffffffffffffffff / POW_LOCAL_WORKERS;
+        let (low, high) = (seg_size * i, seg_size * (i + 1));
+        for nonce in low..high {
+            if let Ok(th) = encoding::nano_work_hash(previous, &nonce.to_be_bytes()) {
+                if u64::from_be_bytes(th) >= u64::from_be_bytes(*threshold) {
+                    sender.send(nonce.to_be_bytes()).unwrap();
+                    break;
+                }
+            }
+            if *found.lock().unwrap() {
+                break;
+            }
+        }
     }
 }

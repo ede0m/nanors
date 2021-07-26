@@ -128,13 +128,7 @@ impl Account {
         self.rep = rep;
     }
 
-    pub fn create_block(
-        &self,
-        new_balance: u128,
-        link: &str,
-        work: &str,
-    ) -> NanoBlock {
-
+    pub fn create_block(&self, new_balance: u128, link: &str, work: &str) -> NanoBlock {
         // todo: signing algo
         NanoBlock {
             kind: String::from("state"),

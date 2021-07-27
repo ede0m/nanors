@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
 const RECV_DIFFICULTY: &str = "fffffe0000000000";
-const POW_LOCAL_WORKERS: u64 = 5;
+const POW_LOCAL_WORKERS: u64 = 6;
 
 pub struct Manager {
     pub rpc: nano::ClientRpc,
@@ -108,7 +108,7 @@ impl Manager {
         let work = rx.recv().unwrap(); // recv will block.
         *found.lock().unwrap() = true;
         let elapsed_min = (now.elapsed()?.as_secs()) / 60;
-        println!("pow complete in {} minutes", elapsed_min);
+        println!("pow complete in {} minutes. work: {:02x?} -> {:02x?}", elapsed_min, work,encoding::nano_work_hash(&previous, &work));
         for handle in handles {
             handle.join().unwrap();
         }

@@ -3,6 +3,7 @@
 use crate::wallet;
 use reqwest::*;
 use serde::{de::DeserializeOwned, Deserialize};
+use serde_json::json;
 use std::array::IntoIter;
 use std::collections::HashMap;
 use std::iter::FromIterator;
@@ -29,6 +30,11 @@ pub struct RPCAccountInfoResp {
 #[derive(Deserialize, Debug)]
 pub struct RPCPendingResp {
     pub blocks: Vec<String>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct RPCProcessResp {
+    pub hash: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -73,10 +79,10 @@ impl ClientRpc {
                 );
                 None
             }
-            Ok(v) => Some({
+            Ok(v) => {
                 println!("connected: {:?}", v);
-                v.unwrap()
-            }),
+                v
+            },
         }
     }
 
@@ -93,7 +99,7 @@ impl ClientRpc {
             }
             Ok(v) => {
                 //println!("{:?}", v);
-                Some(v.unwrap())
+                v
             }
         }
     }
@@ -109,9 +115,29 @@ impl ClientRpc {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
             }
-            Ok(v) => match v {
-                Some(v) => Some(v),
-                None => None,
+            Ok(v) => {
+                println!("account info: {:?}", v);
+                v
+            },
+        }
+    }
+
+    pub async fn process(&self, block : &wallet::NanoBlock, subtype: &str) -> Option<RPCProcessResp> {
+        let b = serde_json::to_string(block).expect("could not serialize block");
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([
+            ("action", "process"),
+            ("json_block", "true"),
+            ("subtype", subtype),
+            ("block", &b),
+        ]));
+        match self.rpc_post::<RPCProcessResp>(r).await {
+            Err(e) => {
+                eprintln!("\n rpc process failed.\n error: {:#?}", e);
+                None
+            }
+            Ok(v) => {
+                println!("processed: {:?}", v);
+                v
             },
         }
     }
@@ -128,7 +154,7 @@ impl ClientRpc {
                 eprintln!("\n rpc pending failed.\n error: {:#?}", e);
                 None
             }
-            Ok(v) => Some(v.unwrap()),
+            Ok(v) => v,
         }
     }
 
@@ -137,9 +163,15 @@ impl ClientRpc {
         T: DeserializeOwned,
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
-        match resp.json::<T>().await {
-            Ok(t) => Ok(Some(t)),
-            Err(_) => Ok(None),
-        }
+        let resp = resp.text().await?;
+        //println!("body: {}", resp);
+        let resp : Option<T> = match serde_json::from_str(&resp){
+            Ok(t) => Some(t),
+            Err(e) => {
+                eprintln!("{:?}", e);
+                None
+            }
+        };
+        Ok(resp)
     }
 }

@@ -1,16 +1,18 @@
 use crate::encoding;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
-use ed25519_dalek::PublicKey;
-use ed25519_dalek::SecretKey;
+use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
 use hex::FromHex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
 
+const SIG_PREAMBLE: [u8; 32] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6,
+];
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
 
@@ -27,9 +29,10 @@ pub struct Account {
     pub rep: String,
     pub pk: [u8; 32],
     sk: [u8; 32],
+    kp: Keypair,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct NanoBlock {
     #[serde(rename(deserialize = "type"))]
     kind: String,
@@ -109,6 +112,10 @@ impl Account {
     pub fn new(index: u32, seed: &[u8; 32]) -> Result<Account, Box<dyn Error>> {
         let sk = Account::create_sk(&index, seed).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
+        let kp = Keypair {
+            secret: SecretKey::from_bytes(&sk)?,
+            public: PublicKey::from_bytes(&pk)?,
+        };
         let addr = Account::create_addr(&pk).unwrap();
         let (frontier, rep, balance) = (String::from("0"), String::from(DEFUALT_REP), 0);
         Ok(Account {
@@ -119,6 +126,7 @@ impl Account {
             rep,
             sk,
             pk,
+            kp,
         })
     }
 
@@ -128,9 +136,14 @@ impl Account {
         self.rep = rep;
     }
 
-    pub fn create_block(&self, new_balance: u128, link: &str, work: &str) -> NanoBlock {
-        // todo: signing algo
-        NanoBlock {
+    pub fn create_block(
+        &self,
+        new_balance: u128,
+        link: &str,
+        work: &str,
+    ) -> Result<NanoBlock, Box<dyn Error>> {
+        let sig = self.sign_block(new_balance, link)?;
+        Ok(NanoBlock {
             kind: String::from("state"),
             account: String::from(&self.addr),
             previous: String::from(&self.frontier),
@@ -138,9 +151,26 @@ impl Account {
             balance: Some(new_balance.to_string()),
             link: Some(link.to_string()),
             link_as_account: None,
-            signature: String::new(), // todo!
+            signature: sig,
             work: String::from(work),
-        }
+        })
+    }
+
+    fn sign_block(&self, new_balance: u128, link: &str) -> Result<String, Box<dyn Error>> {
+        let acct = self.addr.as_bytes();
+        let prev = self.frontier.as_bytes();
+        let rep = self.rep.as_bytes();
+        let bal = new_balance.to_be_bytes();
+        let link = link.as_bytes();
+        let digest_box = encoding::blake2b(
+            32,
+            [&SIG_PREAMBLE, acct, prev, rep, &bal, link]
+                .concat()
+                .as_slice(),
+        )?;
+        let prehashed = encoding::blake2b_hasher(&*digest_box)?;
+        let sig = self.kp.sign_prehashed(prehashed, None)?;
+        Ok(hex::encode_upper(sig.to_bytes()))
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed

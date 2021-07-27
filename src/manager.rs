@@ -55,13 +55,14 @@ impl Manager {
         for a in &mut self.wallet.accounts {
             // query nano node and populate ancillary account info
             if let Some(info) = self.rpc.account_info(&a.addr).await {
+                println!("{:?}", info);
                 a.load(info.balance.parse()?, info.frontier, info.representative);
             }
         }
         // todo: run receive in same loop above (immutable borrow when already borrowed mut...)
         for a in &self.wallet.accounts {
             if let Some(pending) = self.rpc.pending(&a.addr).await {
-                println!("{:?}", pending.blocks);
+                println!("pending: {:?}", pending.blocks);
                 for hash in pending.blocks {
                     let r = self.receive(&hash, a).await;
                 }
@@ -71,6 +72,7 @@ impl Manager {
     }
 
     async fn receive(&self, hash: &str, acct: &wallet::Account) -> Result<(), Box<dyn Error>> {
+        let subtype = "send";
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
         let previous: [u8; 32];
         if acct.frontier == "0" {
@@ -82,10 +84,13 @@ impl Manager {
         }
         let work = hex::encode(Manager::pow_local(previous, &difficulty)?);
         if let Some(send_block_info) = self.rpc.block_info(hash).await {
-            assert_eq!(send_block_info.subtype, "send");
+            assert_eq!(send_block_info.subtype, subtype);
             let sent_amount: u128 = send_block_info.amount.parse()?;
             let new_balance = acct.balance + sent_amount;
-            let b = acct.create_block(new_balance, hash, &work);
+            let b = acct.create_block(new_balance, hash, &work)?;
+            if let Some(hash) = self.rpc.process(&b, subtype).await {
+                println!("{}", hash.hash);
+            }
         }
         Ok(())
     }
@@ -108,7 +113,12 @@ impl Manager {
         let work = rx.recv().unwrap(); // recv will block.
         *found.lock().unwrap() = true;
         let elapsed_min = (now.elapsed()?.as_secs()) / 60;
-        println!("pow complete in {} minutes. work: {:02x?} -> {:02x?}", elapsed_min, work,encoding::nano_work_hash(&previous, &work));
+        println!(
+            "pow complete in {} minutes. work: {:02x?} -> {:02x?}",
+            elapsed_min,
+            work,
+            encoding::nano_work_hash(&previous, &work)
+        );
         for handle in handles {
             handle.join().unwrap();
         }

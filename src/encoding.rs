@@ -2,7 +2,7 @@ use aes_gcm::aead::{Aead, NewAead};
 use aes_gcm::{Aes128Gcm, Nonce};
 use bitvec::prelude::*;
 use blake2::digest::{Update, VariableOutput};
-use blake2::{VarBlake2b, Blake2b, Digest};
+use blake2::{Blake2b, Digest, VarBlake2b};
 use hkdf::Hkdf;
 use rand::Rng;
 use sha2::Sha256;

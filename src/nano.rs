@@ -82,7 +82,7 @@ impl ClientRpc {
             Ok(v) => {
                 println!("connected: {:?}", v);
                 v
-            },
+            }
         }
     }
 
@@ -118,11 +118,15 @@ impl ClientRpc {
             Ok(v) => {
                 println!("account info: {:?}", v);
                 v
-            },
+            }
         }
     }
 
-    pub async fn process(&self, block : &wallet::NanoBlock, subtype: &str) -> Option<RPCProcessResp> {
+    pub async fn process(
+        &self,
+        block: &wallet::NanoBlock,
+        subtype: &str,
+    ) -> Option<RPCProcessResp> {
         let b = serde_json::to_string(block).expect("could not serialize block");
         let r = HashMap::<_, _>::from_iter(IntoIter::new([
             ("action", "process"),
@@ -138,7 +142,7 @@ impl ClientRpc {
             Ok(v) => {
                 println!("processed: {:?}", v);
                 v
-            },
+            }
         }
     }
 
@@ -165,7 +169,7 @@ impl ClientRpc {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
         //println!("body: {}", resp);
-        let resp : Option<T> = match serde_json::from_str(&resp){
+        let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {
                 eprintln!("{:?}", e);

@@ -157,18 +157,30 @@ impl Account {
     }
 
     fn sign_block(&self, new_balance: u128, link: &str) -> Result<String, Box<dyn Error>> {
+        // todo: need to be decoded! duhh
         let acct = self.addr.as_bytes();
         let prev = self.frontier.as_bytes();
         let rep = self.rep.as_bytes();
         let bal = new_balance.to_be_bytes();
-        let link = link.as_bytes();
-        let digest_box = encoding::blake2b(
+        let link = &hex::decode(link)?;
+        println!("{:02X?}", link);
+        let blk_data = [&SIG_PREAMBLE, acct, prev, rep, &bal, link].concat();
+        println!(
+            "blk_data len: {}\nacct: {}\n prev: {}\n rep: {}\n bal: {}\n link: {}\n",
+            blk_data.len(),
+            acct.len(),
+            prev.len(),
+            rep.len(),
+            bal.len(),
+            link.len()
+        );
+        let msg_digest_box = encoding::blake2b(
             32,
             [&SIG_PREAMBLE, acct, prev, rep, &bal, link]
                 .concat()
                 .as_slice(),
         )?;
-        let prehashed = encoding::blake2b_hasher(&*digest_box)?;
+        let prehashed = encoding::blake2b_hasher(&*msg_digest_box)?;
         let sig = self.kp.sign_prehashed(prehashed, None)?;
         Ok(hex::encode_upper(sig.to_bytes()))
     }
@@ -284,5 +296,38 @@ mod tests {
             addr,
             "nano_1e69ju7uc6eu3zkgm3krmu9x7hejdnx8sgkaah3ywo5xws6ttcy1g4yeo4bi"
         );
+    }
+
+    #[test]
+    fn valid_sign() {
+        let sk = hex::decode("0ED82E6990A16E7AD2375AB5D54BEAABF6C676D09BEC74D9295FCAE35439F694")
+            .unwrap()
+            .try_into()
+            .unwrap();
+        let pk = hex::decode("611C5C60034E6AD9ED9591E62DD1A78B482C2EDF1A02C5E063E5ABE692AED065")
+            .unwrap()
+            .try_into()
+            .unwrap();
+
+        let a = Account {
+            index: 0,
+            addr: String::from("xrb_1rawdji18mmcu9psd6h87qath4ta7iqfy8i4rqi89sfdwtbcxn57jm9k3q11"),
+            balance: 100,
+            frontier: String::from("0"),
+            rep: String::from("nano_1stofnrxuz3cai7ze75o174bpm7scwj9jn3nxsn8ntzg784jf1gzn1jjdkou"),
+            pk: pk,
+            sk: sk,
+            kp: Keypair {
+                secret: SecretKey::from_bytes(&sk).unwrap(),
+                public: PublicKey::from_bytes(&pk).unwrap(),
+            },
+        };
+
+        let sig = a.sign_block(
+            100,
+            "5B2DA492506339C0459867AA1DA1E7EDAAC4344342FAB0848F43B46D248C8E99",
+        );
+        let valid = "903991714A55954D15C91DB75CAE2FBF1DD1A2D6DA5524AA2870F76B50A8FE8B4E3FBB53E46B9E82638104AAB3CFA71CFC36B7D676B3D6CAE84725D04E4C360F";
+        assert_eq!(sig.unwrap(), valid);
     }
 }

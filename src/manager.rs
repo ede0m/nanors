@@ -112,7 +112,7 @@ impl Manager {
         }
         let work = rx.recv().unwrap(); // recv will block.
         *found.lock().unwrap() = true;
-        let elapsed_min = (now.elapsed()?.as_secs()) / 60;
+        let elapsed_min = (now.elapsed()?.as_secs()) as f64 / 60.0;
         println!(
             "pow complete in {} minutes. work: {:02x?} -> {:02x?}",
             elapsed_min,

@@ -157,14 +157,19 @@ impl Account {
     }
 
     fn sign_block(&self, new_balance: u128, link: &str) -> Result<String, Box<dyn Error>> {
-        // todo: need to be decoded! duhh
+        let prev : [u8; 32];
+        if self.frontier == "0" {
+            prev = [0x0; 32];
+        }
+        else {
+            prev = hex::decode(&self.frontier)?.as_slice().try_into()?;
+        }
         let acct = self.addr.as_bytes();
-        let prev = self.frontier.as_bytes();
         let rep = self.rep.as_bytes();
-        let bal = new_balance.to_be_bytes();
+        let bal : [u8; 16] = new_balance.to_be_bytes();
         let link = &hex::decode(link)?;
-        println!("{:02X?}", link);
-        let blk_data = [&SIG_PREAMBLE, acct, prev, rep, &bal, link].concat();
+        //println!("{:02X?}", link);
+        let blk_data = [&SIG_PREAMBLE, acct, &prev, rep, &bal, link].concat();
         println!(
             "blk_data len: {}\nacct: {}\n prev: {}\n rep: {}\n bal: {}\n link: {}\n",
             blk_data.len(),
@@ -176,7 +181,7 @@ impl Account {
         );
         let msg_digest_box = encoding::blake2b(
             32,
-            [&SIG_PREAMBLE, acct, prev, rep, &bal, link]
+            [&SIG_PREAMBLE, acct, &prev, rep, &bal, link]
                 .concat()
                 .as_slice(),
         )?;

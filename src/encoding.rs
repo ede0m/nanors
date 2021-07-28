@@ -15,14 +15,28 @@ const ALPHABET_ARR: [char; 32] = [
 ];
 
 // credit to https://github.com/feeless/feeless/blob/main/src/keys/address.rs
-pub fn base32_nano_encode(bits: &BitSlice<Msb0, u8>) -> String {
+pub fn base32_nano_encode(bits: &BitSlice<Msb0, u8>) -> Result<String, Box<dyn std::error::Error>> {
     let mut s = String::new();
     for idx in (0..bits.len()).step_by(B32_ENCODING_SIZE) {
-        let chunk = &bits[idx..idx + B32_ENCODING_SIZE];
+        let chunk = &bits[idx..(idx + B32_ENCODING_SIZE)];
         let value: u8 = chunk.load_be(); // big endian (msb ordering)
         s.push(ALPHABET_ARR[value as usize]);
     }
-    s
+    Ok(s)
+}
+
+// credit to https://github.com/feeless/feeless/blob/main/src/keys/address.rs
+pub fn base32_nano_decode(addr: &str) -> Result<BitVec<Msb0, u8>, Box<dyn std::error::Error>> {
+    let mut bits: BitVec<Msb0, u8> = BitVec::new();
+    for c in addr.chars() {
+        let val = match ALPHABET_ARR.iter().position(|&ch| ch == c) {
+            Some(i) => i as u8,
+            None => return Err("base 32 nano decode failure".into()),
+        };
+        let char_bits: &BitSlice<Msb0, u8> = val.view_bits();
+        bits.extend_from_bitslice(&char_bits[(8 - B32_ENCODING_SIZE)..8]);
+    }
+    Ok(bits)
 }
 
 pub fn generate_nano_seed() -> [u8; 32] {

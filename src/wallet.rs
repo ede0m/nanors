@@ -1,7 +1,7 @@
 use crate::encoding;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signer};
+use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer, SECRET_KEY_LENGTH};
 use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
@@ -113,8 +113,8 @@ impl Account {
         let sk = Account::create_sk(&index, seed).unwrap();
         let pk = Account::create_pk(&sk).unwrap();
         let kp = Keypair {
-            secret: SecretKey::from_bytes(&sk)?,
-            public: PublicKey::from_bytes(&pk)?,
+            secret: SecretKey::from_bytes(&sk).map_err(|e| format!("{}", e))?,
+            public: PublicKey::from_bytes(&pk).map_err(|e| format!("{}", e))?,
         };
         let addr = Account::create_addr(&pk).unwrap();
         let (frontier, rep, balance) = (String::from("0"), String::from(DEFUALT_REP), 0);
@@ -157,36 +157,31 @@ impl Account {
     }
 
     fn sign_block(&self, new_balance: u128, link: &str) -> Result<String, Box<dyn Error>> {
-        let prev : [u8; 32];
-        if self.frontier == "0" {
-            prev = [0x0; 32];
-        }
-        else {
-            prev = hex::decode(&self.frontier)?.as_slice().try_into()?;
-        }
-        let acct = self.addr.as_bytes();
-        let rep = self.rep.as_bytes();
-        let bal : [u8; 16] = new_balance.to_be_bytes();
-        let link = &hex::decode(link)?;
-        //println!("{:02X?}", link);
-        let blk_data = [&SIG_PREAMBLE, acct, &prev, rep, &bal, link].concat();
+        let prev: [u8; 32] = if self.frontier == "0" {
+            [0x0; 32]
+        } else {
+            hex::decode(&self.frontier)?.as_slice().try_into()?
+        };
+
+        let acct = &self.pk[..];
+        let rep = Account::decode_addr(&self.rep)?;
+        let bal: [u8; 16] = new_balance.to_be_bytes();
+        let link = hex::decode(link)?;
+        let blk_data = [&SIG_PREAMBLE, acct, &prev, &rep, &bal, &link].concat();
         println!(
-            "blk_data len: {}\nacct: {}\n prev: {}\n rep: {}\n bal: {}\n link: {}\n",
+            "blk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",
             blk_data.len(),
-            acct.len(),
-            prev.len(),
-            rep.len(),
-            bal.len(),
-            link.len()
+            SIG_PREAMBLE,
+            acct,
+            prev,
+            rep,
+            bal,
+            link
         );
-        let msg_digest_box = encoding::blake2b(
-            32,
-            [&SIG_PREAMBLE, acct, &prev, rep, &bal, link]
-                .concat()
-                .as_slice(),
-        )?;
-        let prehashed = encoding::blake2b_hasher(&*msg_digest_box)?;
-        let sig = self.kp.sign_prehashed(prehashed, None)?;
+        //println!("{:02X?}", &self.kp.to_bytes()[0..SECRET_KEY_LENGTH]);
+        let sig = self.kp.sign([&SIG_PREAMBLE, acct, &prev, &rep, &bal, &link]
+            .concat()
+            .as_slice());
         Ok(hex::encode_upper(sig.to_bytes()))
     }
 
@@ -203,33 +198,41 @@ impl Account {
     //https://docs.nano.org/integration-guides/the-basics/#account-public-key
     fn create_pk(sk: &[u8; 32]) -> Result<[u8; 32], Box<dyn Error>> {
         // the secret key of the ed25519 pair is the nano sk.
-        let ed25519_sk = SecretKey::from_bytes(sk)?;
-        /* ed25519-dalek hardcoded sha512.. so i patch a local version
-        that overwrites impl From <SecretKey> for PrivateKey to use Blake2512.
-        https://docs.rs/ed25519-dalek/1.0.1/src/ed25519_dalek/public.rs.html#54-68
-        https://github.com/dalek-cryptography/ed25519-dalek/pull/65/commits/d81d43e3ae957e4c707560d7aaf9f7326a96eaaa */
+        let ed25519_sk = SecretKey::from_bytes(sk).map_err(|err| format!("{:?}", err))?;
         let ed25519_pk: PublicKey = (&ed25519_sk).into();
         Ok(ed25519_pk.to_bytes().try_into()?)
     }
 
+    //https://docs.nano.org/integration-guides/the-basics/#account-public-address
     fn create_addr(pk: &[u8; 32]) -> Result<String, Box<dyn Error>> {
         let mut s = String::new();
         // checksum of 5 bytes of pk
         let mut cs_box = encoding::blake2b(5, pk)?;
         (*cs_box).reverse(); // reverse the byte order as blake2b outputs in little endian
         let cs_bits = (*cs_box).view_bits::<Msb0>();
-        let cs_nb32 = encoding::base32_nano_encode(&cs_bits);
+        let cs_nb32 = encoding::base32_nano_encode(&cs_bits)?;
         // 260 % 5 (base32 represented by 5 bits) = 0
         let mut pk_bits: BitVec<Msb0, u8> = BitVec::with_capacity(260);
         // 4 bits of padding in the front of the public key when encoding.
         let pad = bitvec![Msb0, u8; 0; 4];
         pk_bits.extend_from_bitslice(&pad);
+        println!("{:?}", pk_bits);
         pk_bits.extend_from_raw_slice(pk);
-        let pk_nb32 = encoding::base32_nano_encode(&pk_bits);
+        let pk_nb32 = encoding::base32_nano_encode(&pk_bits)?;
         s.push_str("nano_");
         s.push_str(&pk_nb32);
         s.push_str(&cs_nb32);
         Ok(s)
+    }
+
+    //https://docs.nano.org/integration-guides/the-basics/#account-public-address
+    fn decode_addr(addr: &str) -> Result<[u8; 32], Box<dyn Error>> {
+        let mut addr_bits = encoding::base32_nano_decode(&addr[5..57])?;
+        // remove 4 bits of padding in front
+        addr_bits.drain(0..4);
+        let addr_bytes = addr_bits.as_raw_slice();
+        let addr_bytes: [u8; 32] = addr_bytes.try_into()?;
+        Ok(addr_bytes)
     }
 }
 
@@ -304,6 +307,16 @@ mod tests {
     }
 
     #[test]
+    fn can_decode_addr() {
+        let addr = "nano_1e69ju7uc6eu3zkgm3krmu9x7hejdnx8sgkaah3ywo5xws6ttcy1g4yeo4bi";
+        let pk = Account::decode_addr(addr).unwrap();
+        assert_eq!(
+            "30878ECBB5119B0FE4E986589ECFD2BD915D3A6CBA4843C3EE547DE649AD2BC0",
+            hex::encode_upper(&pk)
+        );
+    }
+
+    #[test]
     fn valid_sign() {
         let sk = hex::decode("0ED82E6990A16E7AD2375AB5D54BEAABF6C676D09BEC74D9295FCAE35439F694")
             .unwrap()
@@ -316,7 +329,7 @@ mod tests {
 
         let a = Account {
             index: 0,
-            addr: String::from("xrb_1rawdji18mmcu9psd6h87qath4ta7iqfy8i4rqi89sfdwtbcxn57jm9k3q11"),
+            addr: String::from("nano_1rawdji18mmcu9psd6h87qath4ta7iqfy8i4rqi89sfdwtbcxn57jm9k3q11"),
             balance: 100,
             frontier: String::from("0"),
             rep: String::from("nano_1stofnrxuz3cai7ze75o174bpm7scwj9jn3nxsn8ntzg784jf1gzn1jjdkou"),

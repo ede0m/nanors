@@ -168,7 +168,7 @@ impl ClientRpc {
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
-        //println!("body: {}", resp);
+        println!("body: {}", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {

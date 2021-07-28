@@ -86,6 +86,7 @@ impl Manager {
         if let Some(send_block_info) = self.rpc.block_info(hash).await {
             assert_eq!(send_block_info.subtype, subtype);
             let sent_amount: u128 = send_block_info.amount.parse()?;
+            println!("{}", sent_amount);
             let new_balance = acct.balance + sent_amount;
             let b = acct.create_block(new_balance, hash, &work)?;
             if let Some(hash) = self.rpc.process(&b, subtype).await {

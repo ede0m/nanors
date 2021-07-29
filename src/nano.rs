@@ -2,7 +2,7 @@
 // https://docs.nano.org/commands/rpc-protocol/#node-rpcs
 use crate::wallet;
 use reqwest::*;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::json;
 use std::array::IntoIter;
 use std::collections::HashMap;
@@ -59,6 +59,14 @@ pub struct RPCTelemetryResp {
     pub active_difficulty: String,
 }
 
+#[derive(Deserialize, Serialize, Debug)]
+pub struct RPCProcessReq {
+    action: String,
+    json_block: bool,
+    subtype: String,
+    block: wallet::NanoBlock
+}
+
 impl ClientRpc {
     pub fn new(addr: &str) -> Result<ClientRpc> {
         let client = reqwest::Client::builder().build()?;
@@ -70,7 +78,7 @@ impl ClientRpc {
 
     pub async fn connect(&self) -> Option<RPCTelemetryResp> {
         let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "telemetry")]));
-        let v = self.rpc_post::<RPCTelemetryResp>(r).await;
+        let v = self.rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r).await;
         match v {
             Err(e) => {
                 eprintln!(
@@ -92,7 +100,7 @@ impl ClientRpc {
             ("json_block", "true"),
             ("hash", hash),
         ]));
-        match self.rpc_post::<RPCBlockInfoResp>(r).await {
+        match self.rpc_post::<RPCBlockInfoResp, HashMap<&str, &str>>(r).await {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -110,7 +118,7 @@ impl ClientRpc {
             ("representative", "true"),
             ("account", acct),
         ]));
-        match self.rpc_post::<RPCAccountInfoResp>(r).await {
+        match self.rpc_post::<RPCAccountInfoResp, HashMap<&str, &str>>(r).await {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -127,14 +135,16 @@ impl ClientRpc {
         block: &wallet::NanoBlock,
         subtype: &str,
     ) -> Option<RPCProcessResp> {
-        let b = serde_json::to_string(block).expect("could not serialize block");
-        let r = HashMap::<_, _>::from_iter(IntoIter::new([
-            ("action", "process"),
-            ("json_block", "true"),
-            ("subtype", subtype),
-            ("block", &b),
-        ]));
-        match self.rpc_post::<RPCProcessResp>(r).await {
+        let r = RPCProcessReq{
+            action: String::from("process"),
+            json_block: true,
+            subtype : String::from(subtype),
+            block: block.clone(),
+        };
+        let j = serde_json::to_string_pretty(&r).unwrap();
+        println!("{:#?}", r);
+        println!("{}", j);
+        match self.rpc_post::<RPCProcessResp, RPCProcessReq>(r).await {
             Err(e) => {
                 eprintln!("\n rpc process failed.\n error: {:#?}", e);
                 None
@@ -153,7 +163,7 @@ impl ClientRpc {
             ("account", addr),
             ("include_active", "true"),
         ]));
-        match self.rpc_post::<RPCPendingResp>(r).await {
+        match self.rpc_post::<RPCPendingResp, HashMap<&str, &str>>(r).await {
             Err(e) => {
                 eprintln!("\n rpc pending failed.\n error: {:#?}", e);
                 None
@@ -162,9 +172,10 @@ impl ClientRpc {
         }
     }
 
-    async fn rpc_post<T>(&self, r: HashMap<&str, &str>) -> Result<Option<T>>
+    async fn rpc_post<T, P>(&self, r: P) -> Result<Option<T>>
     where
         T: DeserializeOwned,
+        P: Serialize,
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;

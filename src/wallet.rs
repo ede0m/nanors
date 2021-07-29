@@ -25,23 +25,22 @@ pub struct Account {
     pub index: u32,
     pub addr: String,
     pub balance: u128,
-    pub frontier: String, // option??
+    pub frontier: [u8; 32], // option??
     pub rep: String,
     pub pk: [u8; 32],
     sk: [u8; 32],
     kp: Keypair,
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NanoBlock {
-    #[serde(rename(deserialize = "type"))]
+    #[serde(rename(serialize= "type", deserialize = "type"))]
     kind: String,
     account: String,
     previous: String,
     representative: String,
-    balance: Option<String>,
-    link: Option<String>,
-    link_as_account: Option<String>,
+    balance: String,
+    link: String,
     signature: String,
     work: String,
 }
@@ -103,7 +102,7 @@ impl Wallet {
             self.accounts.len(),
             hex::encode_upper(&ciphertext),
             hex::encode_upper(&nonce)
-        );
+        )?;
         Ok(())
     }
 }
@@ -117,7 +116,7 @@ impl Account {
             public: PublicKey::from_bytes(&pk).map_err(|e| format!("{}", e))?,
         };
         let addr = Account::create_addr(&pk).unwrap();
-        let (frontier, rep, balance) = (String::from("0"), String::from(DEFUALT_REP), 0);
+        let (frontier, rep, balance) = ([0u8; 32], String::from(DEFUALT_REP), 0);
         Ok(Account {
             index,
             addr,
@@ -132,7 +131,10 @@ impl Account {
 
     pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
         self.balance = balance;
-        self.frontier = frontier;
+        self.frontier = match hex::decode(frontier) {
+            Ok(f) => f.try_into().unwrap(),
+            Err(e) => panic!("account load frontier error"),
+        };
         self.rep = rep;
     }
 
@@ -146,28 +148,22 @@ impl Account {
         Ok(NanoBlock {
             kind: String::from("state"),
             account: String::from(&self.addr),
-            previous: String::from(&self.frontier),
+            previous: hex::encode_upper(&self.frontier),
             representative: String::from(&self.rep),
-            balance: Some(new_balance.to_string()),
-            link: Some(link.to_string()),
-            link_as_account: None,
+            balance: new_balance.to_string(),
+            link: link.to_string(),
             signature: sig,
             work: String::from(work),
         })
     }
 
     fn sign_block(&self, new_balance: u128, link: &str) -> Result<String, Box<dyn Error>> {
-        let prev: [u8; 32] = if self.frontier == "0" {
-            [0x0; 32]
-        } else {
-            hex::decode(&self.frontier)?.as_slice().try_into()?
-        };
-
+        let prev = &self.frontier;
         let acct = &self.pk[..];
         let rep = Account::decode_addr(&self.rep)?;
         let bal: [u8; 16] = new_balance.to_be_bytes();
         let link = hex::decode(link)?;
-        let blk_data = [&SIG_PREAMBLE, acct, &prev, &rep, &bal, &link].concat();
+        let blk_data = [&SIG_PREAMBLE, acct, prev, &rep, &bal, &link].concat();
         println!(
             "blk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",
             blk_data.len(),
@@ -179,7 +175,7 @@ impl Account {
             link
         );
         //println!("{:02X?}", &self.kp.to_bytes()[0..SECRET_KEY_LENGTH]);
-        let sig = self.kp.sign([&SIG_PREAMBLE, acct, &prev, &rep, &bal, &link]
+        let sig = self.kp.sign([&SIG_PREAMBLE, acct, prev, &rep, &bal, &link]
             .concat()
             .as_slice());
         Ok(hex::encode_upper(sig.to_bytes()))
@@ -331,7 +327,7 @@ mod tests {
             index: 0,
             addr: String::from("nano_1rawdji18mmcu9psd6h87qath4ta7iqfy8i4rqi89sfdwtbcxn57jm9k3q11"),
             balance: 100,
-            frontier: String::from("0"),
+            frontier: hex::decode("0").unwrap().try_into().unwrap(),
             rep: String::from("nano_1stofnrxuz3cai7ze75o174bpm7scwj9jn3nxsn8ntzg784jf1gzn1jjdkou"),
             pk: pk,
             sk: sk,

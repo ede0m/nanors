@@ -12,7 +12,7 @@ use std::time::SystemTime;
 
 const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
 const RECV_DIFFICULTY: &str = "fffffe0000000000";
-const POW_LOCAL_WORKERS: u64 = 6;
+const POW_LOCAL_WORKERS: u64 = 8;
 
 pub struct Manager {
     pub rpc: nano::ClientRpc,
@@ -35,7 +35,7 @@ impl Manager {
             wallet,
             active_network_difficulty,
         };
-        m.synchronize().await;
+        m.synchronize().await?;
         Ok(m)
     }
 
@@ -72,11 +72,12 @@ impl Manager {
     }
 
     async fn receive(&self, hash: &str, acct: &wallet::Account) -> Result<(), Box<dyn Error>> {
-        let subtype = "send";
+        let mut subtype = "receive";
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
         let previous: [u8; 32];
-        if acct.frontier == "0" {
+        if acct.frontier == [0u8; 32] {
             previous = acct.pk.clone(); // open block
+            subtype = "open";
         } else {
             previous = hex::decode(&acct.frontier)?
                 .try_into()
@@ -84,9 +85,7 @@ impl Manager {
         }
         let work = hex::encode(Manager::pow_local(previous, &difficulty)?);
         if let Some(send_block_info) = self.rpc.block_info(hash).await {
-            assert_eq!(send_block_info.subtype, subtype);
             let sent_amount: u128 = send_block_info.amount.parse()?;
-            println!("{}", sent_amount);
             let new_balance = acct.balance + sent_amount;
             let b = acct.create_block(new_balance, hash, &work)?;
             if let Some(hash) = self.rpc.process(&b, subtype).await {

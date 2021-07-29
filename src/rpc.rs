@@ -1,9 +1,8 @@
 // View other options of Public Nano Nodes: https://publicnodes.somenano.com
 // https://docs.nano.org/commands/rpc-protocol/#node-rpcs
-use crate::wallet;
+use crate::block;
 use reqwest::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::json;
 use std::array::IntoIter;
 use std::collections::HashMap;
 use std::iter::FromIterator;
@@ -46,7 +45,7 @@ pub struct RPCBlockInfoResp {
     local_timestamp: String,
     confirmed: String,
     pub subtype: String,
-    pub contents: wallet::NanoBlock,
+    pub contents: block::NanoBlock,
 }
 
 #[derive(Deserialize, Debug)]
@@ -64,7 +63,7 @@ pub struct RPCProcessReq {
     action: String,
     json_block: bool,
     subtype: String,
-    block: wallet::NanoBlock,
+    block: block::NanoBlock,
 }
 
 impl ClientRpc {
@@ -138,11 +137,7 @@ impl ClientRpc {
         }
     }
 
-    pub async fn process(
-        &self,
-        block: &wallet::NanoBlock,
-        subtype: &str,
-    ) -> Option<RPCProcessResp> {
+    pub async fn process(&self, block: &block::NanoBlock, subtype: &str) -> Option<RPCProcessResp> {
         let r = RPCProcessReq {
             action: String::from("process"),
             json_block: true,

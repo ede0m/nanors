@@ -34,7 +34,7 @@ pub struct Account {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct NanoBlock {
-    #[serde(rename(serialize= "type", deserialize = "type"))]
+    #[serde(rename(serialize = "type", deserialize = "type"))]
     kind: String,
     account: String,
     previous: String,
@@ -165,7 +165,7 @@ impl Account {
         let link = hex::decode(link)?;
         let blk_data = [&SIG_PREAMBLE, acct, prev, &rep, &bal, &link].concat();
         println!(
-            "blk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",
+            "\nblk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",
             blk_data.len(),
             SIG_PREAMBLE,
             acct,
@@ -175,10 +175,16 @@ impl Account {
             link
         );
         //println!("{:02X?}", &self.kp.to_bytes()[0..SECRET_KEY_LENGTH]);
-        let sig = self.kp.sign([&SIG_PREAMBLE, acct, prev, &rep, &bal, &link]
-            .concat()
-            .as_slice());
-        Ok(hex::encode_upper(sig.to_bytes()))
+        let sig = self
+            .kp
+            .sign(
+                [&SIG_PREAMBLE, acct, prev, &rep, &bal, &link]
+                    .concat()
+                    .as_slice(),
+            )
+            .to_bytes();
+        //sig.reverse();
+        Ok(hex::encode_upper(sig))
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
@@ -310,38 +316,5 @@ mod tests {
             "30878ECBB5119B0FE4E986589ECFD2BD915D3A6CBA4843C3EE547DE649AD2BC0",
             hex::encode_upper(&pk)
         );
-    }
-
-    #[test]
-    fn valid_sign() {
-        let sk = hex::decode("0ED82E6990A16E7AD2375AB5D54BEAABF6C676D09BEC74D9295FCAE35439F694")
-            .unwrap()
-            .try_into()
-            .unwrap();
-        let pk = hex::decode("611C5C60034E6AD9ED9591E62DD1A78B482C2EDF1A02C5E063E5ABE692AED065")
-            .unwrap()
-            .try_into()
-            .unwrap();
-
-        let a = Account {
-            index: 0,
-            addr: String::from("nano_1rawdji18mmcu9psd6h87qath4ta7iqfy8i4rqi89sfdwtbcxn57jm9k3q11"),
-            balance: 100,
-            frontier: hex::decode("0").unwrap().try_into().unwrap(),
-            rep: String::from("nano_1stofnrxuz3cai7ze75o174bpm7scwj9jn3nxsn8ntzg784jf1gzn1jjdkou"),
-            pk: pk,
-            sk: sk,
-            kp: Keypair {
-                secret: SecretKey::from_bytes(&sk).unwrap(),
-                public: PublicKey::from_bytes(&pk).unwrap(),
-            },
-        };
-
-        let sig = a.sign_block(
-            100,
-            "5B2DA492506339C0459867AA1DA1E7EDAAC4344342FAB0848F43B46D248C8E99",
-        );
-        let valid = "903991714A55954D15C91DB75CAE2FBF1DD1A2D6DA5524AA2870F76B50A8FE8B4E3FBB53E46B9E82638104AAB3CFA71CFC36B7D676B3D6CAE84725D04E4C360F";
-        assert_eq!(sig.unwrap(), valid);
     }
 }

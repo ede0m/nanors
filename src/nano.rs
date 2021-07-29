@@ -64,7 +64,7 @@ pub struct RPCProcessReq {
     action: String,
     json_block: bool,
     subtype: String,
-    block: wallet::NanoBlock
+    block: wallet::NanoBlock,
 }
 
 impl ClientRpc {
@@ -78,7 +78,9 @@ impl ClientRpc {
 
     pub async fn connect(&self) -> Option<RPCTelemetryResp> {
         let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "telemetry")]));
-        let v = self.rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r).await;
+        let v = self
+            .rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r)
+            .await;
         match v {
             Err(e) => {
                 eprintln!(
@@ -100,7 +102,10 @@ impl ClientRpc {
             ("json_block", "true"),
             ("hash", hash),
         ]));
-        match self.rpc_post::<RPCBlockInfoResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCBlockInfoResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -118,7 +123,10 @@ impl ClientRpc {
             ("representative", "true"),
             ("account", acct),
         ]));
-        match self.rpc_post::<RPCAccountInfoResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCAccountInfoResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -135,15 +143,14 @@ impl ClientRpc {
         block: &wallet::NanoBlock,
         subtype: &str,
     ) -> Option<RPCProcessResp> {
-        let r = RPCProcessReq{
+        let r = RPCProcessReq {
             action: String::from("process"),
             json_block: true,
-            subtype : String::from(subtype),
+            subtype: String::from(subtype),
             block: block.clone(),
         };
-        let j = serde_json::to_string_pretty(&r).unwrap();
+        //let j = serde_json::to_string_pretty(&r).unwrap();
         println!("{:#?}", r);
-        println!("{}", j);
         match self.rpc_post::<RPCProcessResp, RPCProcessReq>(r).await {
             Err(e) => {
                 eprintln!("\n rpc process failed.\n error: {:#?}", e);
@@ -163,7 +170,10 @@ impl ClientRpc {
             ("account", addr),
             ("include_active", "true"),
         ]));
-        match self.rpc_post::<RPCPendingResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCPendingResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\n rpc pending failed.\n error: {:#?}", e);
                 None
@@ -179,7 +189,7 @@ impl ClientRpc {
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
-        println!("body: {}", resp);
+        println!("\nbody: {}\n", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {

@@ -43,11 +43,12 @@ pub fn generate_nano_seed() -> [u8; 32] {
     rand::thread_rng().gen::<[u8; 32]>()
 }
 
-pub fn nano_work_hash(prev: &[u8], nonce: &[u8; 8]) -> Result<[u8; 8], Box<dyn std::error::Error>> {
-    let to_hash = [nonce, prev].concat();
-    // threshold is 8 bytes
-    let th_box = blake2b(8, &to_hash)?;
-    Ok((*th_box).try_into()?)
+pub fn nano_work_hash(prev: &[u8], nonce: [u8; 8]) -> Result<[u8; 8], Box<dyn std::error::Error>> {
+    let to_hash = [&nonce, prev].concat();
+    // out is 8 bytes
+    let out_box = blake2b(8, &to_hash)?;
+    //(*out_box).reverse();
+    Ok((*out_box).try_into()?)
 }
 
 pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u8; 12]) {
@@ -55,7 +56,6 @@ pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u
     let key = aes_gcm::Key::from_slice(&key);
     let cipher = Aes128Gcm::new(key);
     let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit. todo: use sequence
-                                                           //let nonce_data = nonce::<12>();
     let nonce = Nonce::from_slice(&nonce_data);
     (
         cipher.encrypt(nonce, data).expect("encrypt failure"),
@@ -120,5 +120,25 @@ mod tests {
             .try_into()
             .expect("failed decrypt content size");
         assert_eq!(*data, og);
+    }
+
+    #[test]
+    fn valid_work() {
+        let pk = hex::decode("611C5C60034E6AD9ED9591E62DD1A78B482C2EDF1A02C5E063E5ABE692AED065")
+            .unwrap();
+        let mut nonce: [u8; 8] = hex::decode("08d09dc3405d9441").unwrap().try_into().unwrap();
+        nonce.reverse(); // byte order reversed for be
+        let output = nano_work_hash(&pk, nonce).unwrap();
+        let threshold: [u8; 8] = hex::decode("ffffffc000000000").unwrap().try_into().unwrap();
+        println!(
+            "nonce: {:02x?} -> outputs {:02x?}",
+            nonce,
+            nano_work_hash(&pk, nonce)
+        );
+        let (output, threshold) = (u64::from_le_bytes(output), u64::from_be_bytes(threshold));
+        println!("output: {}\nthreshold: {}", output, threshold);
+        if output < threshold {
+            panic!("work below threshold");
+        }
     }
 }

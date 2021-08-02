@@ -55,7 +55,7 @@ impl Account {
         let mut i_buf = [0; 4];
         BigEndian::write_u32(&mut i_buf, *index); // index as bytes
         let input: Vec<u8> = seed.iter().chain(&i_buf).cloned().collect();
-        let sk_box = encoding::blake2b(32, &input)?;
+        let sk_box = encoding::blake2bv(32, &input)?;
         let sk = (*sk_box).try_into()?;
         Ok(sk)
     }
@@ -72,7 +72,7 @@ impl Account {
     fn create_addr(pk: &[u8; 32]) -> Result<String, Box<dyn Error>> {
         let mut s = String::new();
         // checksum of 5 bytes of pk
-        let mut cs_box = encoding::blake2b(5, pk)?;
+        let mut cs_box = encoding::blake2bv(5, pk)?;
         (*cs_box).reverse(); // reverse the byte order as blake2b outputs in little endian
         let cs_bits = (*cs_box).view_bits::<Msb0>();
         let cs_nb32 = encoding::base32_nano_encode(&cs_bits)?;
@@ -124,16 +124,14 @@ impl Account {
             bal,
             link
         );
+        let mut digest = encoding::blake2b(&blk_data)?;
+        digest.reverse();
+
         //println!("{:02X?}", &self.kp.to_bytes()[0..SECRET_KEY_LENGTH]);
         let sig = self
             .kp
-            .sign(
-                [&block::SIG_PREAMBLE, &pk_acct, prev, &pk_rep, &bal, &link]
-                    .concat()
-                    .as_slice(),
-            )
+            .sign(&digest)
             .to_bytes();
-        //sig.reverse();
         block.signature = Some(hex::encode_upper(sig));
         Ok(())
     }

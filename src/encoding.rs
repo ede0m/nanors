@@ -46,7 +46,7 @@ pub fn generate_nano_seed() -> [u8; 32] {
 pub fn nano_work_hash(prev: &[u8], nonce: &[u8; 8]) -> Result<[u8; 8], Box<dyn std::error::Error>> {
     let to_hash = [nonce, prev].concat();
     // out is 8 bytes
-    let out_box = blake2b(8, &to_hash)?;
+    let out_box = blake2bv(8, &to_hash)?;
     //(*out_box).reverse();
     Ok((*out_box).try_into()?)
 }
@@ -87,7 +87,7 @@ fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
     okm
 }
 
-pub fn blake2b(
+pub fn blake2bv(
     digest_size: usize,
     message: &[u8],
 ) -> Result<Box<[u8]>, Box<dyn std::error::Error>> {
@@ -96,10 +96,10 @@ pub fn blake2b(
     Ok(hasher.finalize_boxed())
 }
 
-pub fn blake2b_hasher(message: &[u8]) -> Result<Blake2b, Box<dyn std::error::Error>> {
+pub fn blake2b(message: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let mut hasher = Blake2b::new();
     blake2::Digest::update(&mut hasher, message);
-    Ok(hasher)
+    Ok(hasher.finalize().as_slice().to_vec())
 }
 
 #[cfg(test)]

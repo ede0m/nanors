@@ -2,6 +2,7 @@ use crate::account;
 use crate::encoding;
 use crate::rpc;
 use crate::wallet;
+use crate::block;
 
 use std::convert::TryInto;
 use std::error::Error;
@@ -76,7 +77,7 @@ impl Manager {
         let mut subtype = "receive";
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
         let previous: [u8; 32];
-        if acct.frontier == [0u8; 32] {
+        if acct.frontier == [0u8; block::BLOCK_HASH_SIZE] {
             previous = acct.pk.clone(); // open block
             subtype = "open";
         } else {
@@ -90,7 +91,8 @@ impl Manager {
             let new_balance = acct.balance + sent_amount;
             let b = acct.create_block(new_balance, hash, Some(&work))?;
             if let Some(hash) = self.rpc.process(&b, subtype).await {
-                println!("{}", hash.hash);
+                //println!("{}", hash.hash);
+                // todo: set frontier, verify balance.
             }
         }
         Ok(())

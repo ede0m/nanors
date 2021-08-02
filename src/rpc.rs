@@ -144,8 +144,7 @@ impl ClientRpc {
             subtype: String::from(subtype),
             block: block.clone(),
         };
-        //let j = serde_json::to_string_pretty(&r).unwrap();
-        println!("{:#?}", r);
+        //println!("{:#?}", r);
         match self.rpc_post::<RPCProcessResp, RPCProcessReq>(r).await {
             Err(e) => {
                 eprintln!("\n rpc process failed.\n error: {:#?}", e);

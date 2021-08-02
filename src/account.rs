@@ -2,7 +2,7 @@ use crate::block;
 use crate::encoding;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
-use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
+use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer, Verifier};
 use std::convert::TryInto;
 use std::error::Error;
 
@@ -103,36 +103,15 @@ impl Account {
             link,
             work,
         )?;
-        self.sign(&mut b);
+        self.sign(&mut b)?;
         Ok(b)
     }
 
     fn sign(&self, block: &mut block::NanoBlock) -> Result<(), Box<dyn Error>> {
-        let prev = &hex::decode(&block.previous)?[..];
-        let pk_acct = decode_addr(&block.account)?;
-        let pk_rep = decode_addr(&block.representative)?;
-        let bal: [u8; 16] = block.balance.parse::<u128>()?.to_be_bytes();
-        let link = &hex::decode(&block.link)?[..];
-        let blk_data = [&block::SIG_PREAMBLE, &pk_acct, prev, &pk_rep, &bal, &link].concat();
-        println!(
-            "\nblk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",
-            blk_data.len(),
-            &block::SIG_PREAMBLE,
-            pk_acct,
-            prev,
-            pk_rep,
-            bal,
-            link
-        );
-        let mut digest = encoding::blake2b(&blk_data)?;
-        digest.reverse();
-
-        //println!("{:02X?}", &self.kp.to_bytes()[0..SECRET_KEY_LENGTH]);
-        let sig = self
-            .kp
-            .sign(&digest)
-            .to_bytes();
-        block.signature = Some(hex::encode_upper(sig));
+        let hash = block.hash()?;
+        let sig = self.kp.sign(&hash);
+        assert!(self.kp.verify(&hash, &sig).is_ok());
+        block.signature = Some(hex::encode_upper(sig.to_bytes()));
         Ok(())
     }
 }

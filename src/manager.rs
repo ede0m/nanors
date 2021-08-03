@@ -52,6 +52,11 @@ impl Manager {
             .collect()
     }
 
+    pub fn account_add(&mut self, pw: &str) -> Result<(), Box<dyn Error>> {
+        self.wallet.add_account(pw)?;
+        Ok(())
+    }
+
     async fn synchronize(&mut self) -> Result<(), Box<dyn Error>> {
         for a in &mut self.wallet.accounts {
             // query nano node and populate ancillary account info
@@ -64,7 +69,7 @@ impl Manager {
                         let sent_amount: u128 = send_block_info.amount.parse()?;
                         let processed_hash =
                             Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
-                        println!("receive processed: {:?}", processed_hash);
+                        //println!("receive processed: {:?}", processed_hash);
                     }
                 }
             }

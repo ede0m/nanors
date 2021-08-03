@@ -44,7 +44,6 @@ impl Account {
     }
 
     pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
-        println!("\nfrontier: {}", frontier);
         self.balance = balance;
         self.frontier = match hex::decode(frontier) {
             Ok(f) => f.try_into().unwrap(),
@@ -154,7 +153,7 @@ impl Account {
     fn sign(&self, block: &mut block::NanoBlock) -> Result<(), Box<dyn Error>> {
         if let Some(hash) = &block.hash {
             let hash = hex::decode(hash)?;
-            println!("hash: {:02x?}", hash);
+            //println!("hash: {:02x?}", hash);
             let sig = self.kp.sign(&hash);
             assert!(self.kp.verify(&hash, &sig).is_ok());
             block.signature = Some(hex::encode_upper(sig.to_bytes()));

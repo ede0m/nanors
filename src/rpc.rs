@@ -131,7 +131,7 @@ impl ClientRpc {
                 None
             }
             Ok(v) => {
-                println!("account info: {:?}", v);
+                //println!("account info: {:?}", v);
                 v
             }
         }
@@ -155,7 +155,7 @@ impl ClientRpc {
                 None
             }
             Ok(v) => {
-                println!("processed: {:?}", v);
+                //println!("processed: {:?}", v);
                 v
             }
         }
@@ -173,7 +173,7 @@ impl ClientRpc {
             .await
         {
             Err(e) => {
-                eprintln!("\n rpc pending failed.\n error: {:#?}", e);
+                eprintln!("\nrpc pending failed.\n error: {:#?}", e);
                 None
             }
             Ok(v) => v,
@@ -191,7 +191,7 @@ impl ClientRpc {
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {
-                eprintln!("{:?}", e);
+                //eprintln!("{:?}", e);
                 None
             }
         };

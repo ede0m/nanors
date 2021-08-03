@@ -116,13 +116,19 @@ fn wallets_show() {
     }
 }
 
-fn run_account_menu(manager: manager::Manager) {
+fn run_account_menu(mut manager: manager::Manager) {
     let account_menu = &["new", "show", "back"];
     loop {
         println!("\n[nano:{}]:\n", manager.curr_wallet_name());
         let selection = menu_select(account_menu, "account options:");
         match selection {
-            "new" => break,
+            "new" => {
+                println!();
+                manager
+                    .account_add(&account_prompt())
+                    .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
+                println!();
+            }
             "show" => {
                 println!();
                 manager.accounts_show().iter().for_each(|s| print_show(&s));
@@ -132,4 +138,12 @@ fn run_account_menu(manager: manager::Manager) {
             _ => print_err(&format!("\n{} unrecognized\n", selection)),
         }
     }
+}
+
+fn account_prompt() -> String {
+    let password = Password::with_theme(&ColorfulTheme::default())
+        .with_prompt("password")
+        .interact()
+        .unwrap();
+    password
 }

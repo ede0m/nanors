@@ -1,11 +1,13 @@
 use crate::block;
 use crate::encoding;
+use crate::manager;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
-use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer, Verifier};
+use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
 use std::convert::TryInto;
 use std::error::Error;
 
+const RECV_DIFFICULTY: &str = "fffffe0000000000";
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 
 pub struct Account {
@@ -42,6 +44,7 @@ impl Account {
     }
 
     pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
+        println!("\nfrontier: {}", frontier);
         self.balance = balance;
         self.frontier = match hex::decode(frontier) {
             Ok(f) => f.try_into().unwrap(),
@@ -49,6 +52,45 @@ impl Account {
         };
         self.rep = rep;
     }
+
+    pub fn accept_block(&mut self, block: &block::NanoBlock) -> Result<(), Box<dyn Error>> {
+        self.balance = block.balance.parse()?;
+        if let Some(hash) = &block.hash {
+            self.frontier = hex::decode(hash)?.as_slice().try_into()?;
+        } else {
+            return Err("no hash on block to accept".into());
+        }
+        Ok(())
+    }
+
+    pub fn receive(
+        &mut self,
+        sent_amount: u128,
+        link: &str,
+    ) -> Result<block::NanoBlock, Box<dyn Error>> {
+        let subtype = "receive";
+        let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
+        let previous = self.frontier.clone();
+        let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
+        let new_balance = self.balance + sent_amount;
+        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
+    }
+
+    pub fn open(
+        &mut self,
+        sent_amount: u128,
+        link: &str,
+    ) -> Result<block::NanoBlock, Box<dyn Error>> {
+        let subtype = "open";
+        let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
+        let previous = [0u8; block::BLOCK_HASH_SIZE];
+        let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
+        let new_balance = self.balance + sent_amount;
+        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
+    }
+
+    // todo: send
+    // todo: change
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
     fn create_sk(index: &u32, seed: &[u8; 32]) -> Result<[u8; 32], Box<dyn Error>> {
@@ -89,10 +131,11 @@ impl Account {
         Ok(s)
     }
 
-    pub fn create_block(
+    fn create_block(
         &self,
         new_balance: u128,
         link: &str,
+        subtype: &str,
         work: Option<&str>,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {
         let mut b = block::NanoBlock::new(
@@ -101,6 +144,7 @@ impl Account {
             &self.rep,
             new_balance,
             link,
+            subtype,
             work,
         )?;
         self.sign(&mut b)?;
@@ -108,10 +152,13 @@ impl Account {
     }
 
     fn sign(&self, block: &mut block::NanoBlock) -> Result<(), Box<dyn Error>> {
-        let hash = block.hash()?;
-        let sig = self.kp.sign(&hash);
-        assert!(self.kp.verify(&hash, &sig).is_ok());
-        block.signature = Some(hex::encode_upper(sig.to_bytes()));
+        if let Some(hash) = &block.hash {
+            let hash = hex::decode(hash)?;
+            println!("hash: {:02x?}", hash);
+            let sig = self.kp.sign(&hash);
+            assert!(self.kp.verify(&hash, &sig).is_ok());
+            block.signature = Some(hex::encode_upper(sig.to_bytes()));
+        }
         Ok(())
     }
 }

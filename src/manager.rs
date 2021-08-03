@@ -1,8 +1,8 @@
 use crate::account;
+use crate::block;
 use crate::encoding;
 use crate::rpc;
 use crate::wallet;
-use crate::block;
 
 use std::convert::TryInto;
 use std::error::Error;
@@ -13,7 +13,6 @@ use std::sync::{
 use std::time::SystemTime;
 
 const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
-const RECV_DIFFICULTY: &str = "fffffe0000000000";
 const POW_LOCAL_WORKERS: u64 = 8;
 
 pub struct Manager {
@@ -57,49 +56,46 @@ impl Manager {
         for a in &mut self.wallet.accounts {
             // query nano node and populate ancillary account info
             if let Some(info) = self.rpc.account_info(&a.addr).await {
-                println!("{:?}", info);
                 a.load(info.balance.parse()?, info.frontier, info.representative);
             }
-        }
-        // todo: run receive in same loop above (immutable borrow when already borrowed mut...)
-        for a in &self.wallet.accounts {
             if let Some(pending) = self.rpc.pending(&a.addr).await {
-                println!("pending: {:?}", pending.blocks);
                 for hash in pending.blocks {
-                    let r = self.receive(&hash, a).await;
+                    if let Some(send_block_info) = self.rpc.block_info(&hash).await {
+                        let sent_amount: u128 = send_block_info.amount.parse()?;
+                        let processed_hash =
+                            Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
+                        println!("receive processed: {:?}", processed_hash);
+                    }
                 }
             }
         }
+
         Ok(())
     }
 
-    async fn receive(&self, hash: &str, acct: &account::Account) -> Result<(), Box<dyn Error>> {
-        let mut subtype = "receive";
-        let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
-        let previous: [u8; 32];
-        if acct.frontier == [0u8; block::BLOCK_HASH_SIZE] {
-            previous = acct.pk.clone(); // open block
-            subtype = "open";
+    async fn receive(
+        rpc: &rpc::ClientRpc,
+        amount: u128,
+        link: &str,
+        account: &mut account::Account,
+    ) -> Result<String, Box<dyn Error>> {
+        let block: block::NanoBlock;
+        if account.frontier == [0u8; block::BLOCK_HASH_SIZE] {
+            block = account.open(amount, link)?; // open case
         } else {
-            previous = hex::decode(&acct.frontier)?
-                .try_into()
-                .expect("frontier malformed in pow");
+            block = account.receive(amount, link)?;
         }
-        let work = hex::encode(Manager::pow_local(previous, &difficulty)?);
-        if let Some(send_block_info) = self.rpc.block_info(hash).await {
-            let sent_amount: u128 = send_block_info.amount.parse()?;
-            let new_balance = acct.balance + sent_amount;
-            let b = acct.create_block(new_balance, hash, Some(&work))?;
-            if let Some(hash) = self.rpc.process(&b, subtype).await {
-                //println!("{}", hash.hash);
-                // todo: set frontier, verify balance.
-            }
+        if let Some(hash) = rpc.process(&block).await {
+            // todo: just do this in acct.create_block.
+            // do a rollback somehow..?
+            account.accept_block(&block)?;
+            return Ok(hash.hash);
         }
-        Ok(())
+        Err("could not process block".into())
     }
 
     //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
-    fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
+    pub fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
         let threshold = threshold.clone();
         let (tx, rx): (Sender<[u8; 8]>, Receiver<[u8; 8]>) = mpsc::channel();
         let found = Arc::new(Mutex::new(false));

@@ -137,7 +137,11 @@ impl ClientRpc {
         }
     }
 
-    pub async fn process(&self, block: &block::NanoBlock, subtype: &str) -> Option<RPCProcessResp> {
+    pub async fn process(&self, block: &block::NanoBlock) -> Option<RPCProcessResp> {
+        let subtype = block
+            .subtype
+            .as_ref()
+            .expect("block to process missing subtype");
         let r = RPCProcessReq {
             action: String::from("process"),
             json_block: true,
@@ -183,7 +187,7 @@ impl ClientRpc {
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
-        println!("\nbody: {}\n", resp);
+        //println!("\nbody: {}\n", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {

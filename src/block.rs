@@ -18,6 +18,8 @@ pub struct NanoBlock {
     pub link: String,
     pub signature: Option<String>,
     pub work: Option<String>,
+    pub hash: Option<String>,
+    pub subtype: Option<String>,
 }
 
 impl NanoBlock {
@@ -27,6 +29,7 @@ impl NanoBlock {
         rep: &str,
         new_balance: u128,
         link: &str,
+        subtype: &str,
         work: Option<&str>,
     ) -> Result<NanoBlock, Box<dyn Error>> {
         let work = if work.is_some() {
@@ -34,7 +37,7 @@ impl NanoBlock {
         } else {
             None
         };
-        Ok(NanoBlock {
+        let mut b = NanoBlock {
             kind: String::from("state"),
             account: String::from(addr),
             previous: hex::encode_upper(prev),
@@ -42,11 +45,15 @@ impl NanoBlock {
             balance: new_balance.to_string(),
             link: link.to_string(),
             signature: None,
+            hash: None,
             work: work,
-        })
+            subtype: Some(String::from(subtype)),
+        };
+        b.set_hash()?;
+        Ok(b)
     }
 
-    pub fn hash(&self) -> Result<[u8; BLOCK_HASH_SIZE], Box<dyn Error>> {
+    fn set_hash(&mut self) -> Result<(), Box<dyn Error>> {
         let mut preamble = [0u8; 32];
         preamble[31] = SIG_PREAMBLE;
         let prev = &hex::decode(&self.previous)?[..];
@@ -67,6 +74,7 @@ impl NanoBlock {
         );*/
         let hash: [u8; BLOCK_HASH_SIZE] =
             (*encoding::blake2bv(BLOCK_HASH_SIZE, &blk_data)?).try_into()?;
-        Ok(hash)
+        self.hash = Some(hex::encode_upper(hash));
+        Ok(())
     }
 }

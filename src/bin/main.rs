@@ -130,14 +130,14 @@ async fn run_account_menu(mut manager: manager::Manager) {
                     .account_add(&account_prompt(manager.curr_wallet_name()))
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
                 print_show(&format!(
-                    "created new account for wallet {}",
+                    "\ncreated new account for wallet {}",
                     manager.curr_wallet_name()
                 ));
             }
             "send" => {
                 let (from, to, amount) = send_prompt(manager.get_accounts());
                 match manager.send(amount, &from, &to).await {
-                    Ok(h) => print_show(&format!("success. block hash: {}", h)),
+                    Ok(h) => print_show(&format!("\nsuccess. block hash: {}", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
                 };
             }
@@ -183,7 +183,7 @@ fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u1
     let amount: u128 = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("amount to send:")
         .validate_with(|input: &String| -> Result<(), &str> {
-            let amount =  match input.parse::<u128>() {
+            let amount = match input.parse::<u128>() {
                 Ok(a) => a,
                 Err(_) => return Err("cannot parse this amount"),
             };

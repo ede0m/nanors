@@ -2,11 +2,13 @@ use crate::account;
 use crate::block;
 use crate::rpc;
 use crate::wallet;
+use crate::work;
 
 use std::convert::TryInto;
 use std::error::Error;
 
 const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
+const WORK_LOCAL: bool = false;
 
 pub struct Manager {
     pub rpc: rpc::ClientRpc,
@@ -33,26 +35,6 @@ impl Manager {
         Ok(m)
     }
 
-    pub async fn send(
-        &mut self,
-        amount: u128,
-        from: &str,
-        to: &str,
-    ) -> Result<String, Box<dyn Error>> {
-        let from = match self.wallet.accounts.iter_mut().find(|a| a.addr == from) {
-            Some(a) => a,
-            None => return Err("from address not found".into()),
-        };
-        let block = from.send(amount, to)?;
-        if let Some(hash) = self.rpc.process(&block).await {
-            // todo: just do this in acct.create_block.
-            // do a rollback somehow..?
-            from.accept_block(&block)?;
-            return Ok(hash.hash);
-        }
-        Err("could not process send block".into())
-    }
-
     pub fn curr_wallet_name(&self) -> &str {
         &self.wallet.name
     }
@@ -74,6 +56,33 @@ impl Manager {
         Ok(())
     }
 
+    pub async fn send(
+        &mut self,
+        amount: u128,
+        from: &str,
+        to: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let from = match self.wallet.accounts.iter_mut().find(|a| a.addr == from) {
+            Some(a) => a,
+            None => return Err("from address not found".into()),
+        };
+        Manager::cache_work(
+            from,
+            &self.rpc,
+            from.frontier.clone(),
+            work::DEFAULT_DIFFICULTY,
+        )
+        .await?;
+        let block = from.send(amount, to)?;
+        if let Some(hash) = self.rpc.process(&block).await {
+            // todo: just do this in acct.create_block.
+            // do a rollback somehow..?
+            from.accept_block(&block)?;
+            return Ok(hash.hash);
+        }
+        Err("could not process send block".into())
+    }
+
     async fn synchronize(&mut self) -> Result<(), Box<dyn Error>> {
         for a in &mut self.wallet.accounts {
             // query nano node and populate ancillary account info
@@ -86,12 +95,10 @@ impl Manager {
                         let sent_amount: u128 = send_block_info.amount.parse()?;
                         let processed_hash =
                             Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
-                        //println!("receive processed: {:?}", processed_hash);
                     }
                 }
             }
         }
-
         Ok(())
     }
 
@@ -103,17 +110,56 @@ impl Manager {
     ) -> Result<String, Box<dyn Error>> {
         let block: block::NanoBlock;
         if account.frontier == [0u8; block::BLOCK_HASH_SIZE] {
-            block = account.open(amount, link)?; // open case
+            Manager::cache_work(account, rpc, account.pk.clone(), work::RECV_DIFFICULTY).await?;
+            block = account.open(amount, link)?;
         } else {
+            Manager::cache_work(
+                account,
+                rpc,
+                account.frontier.clone(),
+                work::RECV_DIFFICULTY,
+            )
+            .await?;
             block = account.receive(amount, link)?;
         }
         if let Some(hash) = rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             account.accept_block(&block)?;
+            // todo: precompute work?
             return Ok(hash.hash);
         }
         Err("could not process receive block".into())
     }
 
+    async fn cache_work(
+        account: &mut account::Account,
+        rpc: &rpc::ClientRpc,
+        previous: [u8; 32],
+        difficulty: &str,
+    ) -> Result<(), Box<dyn Error>> {
+        let work = Manager::gen_work(rpc, previous, difficulty).await?;
+        account.cache_work(work);
+        Ok(())
+    }
+
+    async fn gen_work(
+        rpc: &rpc::ClientRpc,
+        previous: [u8; 32],
+        difficulty: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        // https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
+        let difficulty = hex::decode(difficulty)?.as_slice().try_into()?;
+        let work;
+        if WORK_LOCAL {
+            work = hex::encode(work::pow_local(previous, &difficulty)?)
+        } else {
+            let prev = hex::encode(previous);
+            work = match rpc.work_generate(&prev).await {
+                Some(w) => w.work,
+                None => return Err("failed to generate work".into()),
+            };
+        }
+        Ok(work)
+    }
 }

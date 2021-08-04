@@ -17,9 +17,9 @@ pub struct NanoBlock {
     pub balance: String,
     pub link: String,
     pub signature: Option<String>,
-    pub work: Option<String>,
     pub hash: Option<String>,
     pub subtype: Option<SubType>,
+    pub work: String,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone, Copy)]
@@ -40,13 +40,8 @@ impl NanoBlock {
         new_balance: u128,
         link: &str,
         subtype: SubType,
-        work: Option<&str>,
+        work: String,
     ) -> Result<NanoBlock, Box<dyn Error>> {
-        let work = if work.is_some() {
-            Some(String::from(work.unwrap()))
-        } else {
-            None
-        };
         let mut b = NanoBlock {
             kind: String::from("state"),
             account: String::from(addr),
@@ -56,8 +51,8 @@ impl NanoBlock {
             link: link.to_string(),
             signature: None,
             hash: None,
-            work: work,
             subtype: Some(subtype),
+            work: work,
         };
         b.set_hash()?;
         Ok(b)

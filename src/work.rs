@@ -1,13 +1,14 @@
+use crate::encoding;
 use std::error::Error;
 use std::sync::{
     mpsc::{self, Receiver, Sender},
     Arc, Mutex,
 };
 use std::time::SystemTime;
-use crate::encoding;
 
-const POW_LOCAL_WORKERS: u64 = 8;
-
+const POW_LOCAL_WORKERS: u64 = 6;
+pub const RECV_DIFFICULTY: &str = "fffffe0000000000";
+pub const DEFAULT_DIFFICULTY: &str = "fffffff800000000";
 
 //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
 pub fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
@@ -25,15 +26,15 @@ pub fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box
         handles.push(handle);
     }
     let mut work = rx.recv().unwrap(); // recv will block.
-    /*
-    let elapsed_min = (now.elapsed()?.as_secs()) as f64 / 60.0;
-    println!(
-        "pow complete in {} minutes. work: {:02x?} -> {:02x?}",
-        elapsed_min,
-        work,
-        encoding::nano_work_hash(&previous, &work)
-    );
-    */
+                                       /*
+                                       let elapsed_min = (now.elapsed()?.as_secs()) as f64 / 60.0;
+                                       println!(
+                                           "pow complete in {} minutes. work: {:02x?} -> {:02x?}",
+                                           elapsed_min,
+                                           work,
+                                           encoding::nano_work_hash(&previous, &work)
+                                       );
+                                       */
     *found.lock().unwrap() = true;
     for handle in handles {
         handle.join().unwrap();

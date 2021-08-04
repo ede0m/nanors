@@ -32,6 +32,11 @@ pub struct RPCPendingResp {
 }
 
 #[derive(Deserialize, Debug)]
+pub struct RPCWorkGenResp {
+    pub work: String,
+}
+
+#[derive(Deserialize, Debug)]
 pub struct RPCProcessResp {
     pub hash: String,
 }
@@ -177,6 +182,24 @@ impl ClientRpc {
         }
     }
 
+    // https://docs.nano.org/commands/rpc-protocol/#pending
+    pub async fn work_generate(&self, hash: &str) -> Option<RPCWorkGenResp> {
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([
+            ("action", "work_generate"),
+            ("hash", hash),
+        ]));
+        match self
+            .rpc_post::<RPCWorkGenResp, HashMap<&str, &str>>(r)
+            .await
+        {
+            Err(e) => {
+                eprintln!("\nrpc pending failed.\n error: {:#?}", e);
+                None
+            }
+            Ok(v) => v,
+        }
+    }
+
     async fn rpc_post<T, P>(&self, r: P) -> Result<Option<T>>
     where
         T: DeserializeOwned,
@@ -184,7 +207,7 @@ impl ClientRpc {
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
-        println!("\nbody: {}\n", resp);
+        //println!("\nbody: {}\n", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {

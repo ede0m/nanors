@@ -64,10 +64,10 @@ async fn wallet_init(load: bool) {
     }
     match w {
         Ok(w) => {
-            let manager = manager::Manager::new(w)
-                .await
-                .expect("manager creation failed");
-            run_account_menu(manager).await
+            match manager::Manager::new(w).await {
+                Ok(m) => run_account_menu(m).await,
+                Err(e) => print_err(&format!("\n{}\n", e)),
+            };   
         }
         Err(e) => print_err(&format!("\n{}\n", e)),
     }
@@ -137,7 +137,7 @@ async fn run_account_menu(mut manager: manager::Manager) {
             "send" => {
                 let (from, to, amount) = send_prompt(manager.get_accounts());
                 match manager.send(amount, &from, &to).await {
-                    Ok(h) => print_show(&format!("\nsuccess. block hash: {}", h)),
+                    Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
                 };
             }

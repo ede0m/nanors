@@ -75,7 +75,7 @@ pub fn aes_gcm_decrypt(
     let nonce = Nonce::from_slice(&nonce);
     match cipher.decrypt(nonce, ciphertext) {
         Ok(pt) => Ok(pt),
-        Err(e) => Err("could not decrypt wallet key".into()),
+        Err(_) => Err("could not decrypt wallet key".into()),
     }
 }
 

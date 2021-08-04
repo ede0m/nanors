@@ -94,7 +94,7 @@ impl ClientRpc {
                 None
             }
             Ok(v) => {
-                println!("\nconnected to network: {:?}\n", v);
+                //println!("\nconnected to network: {:?}\n", v);
                 v
             }
         }
@@ -210,7 +210,7 @@ impl ClientRpc {
         //println!("\nbody: {}\n", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
-            Err(e) => {
+            Err(_) => {
                 //eprintln!("{:?}", e);
                 None
             }

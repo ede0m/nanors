@@ -69,13 +69,14 @@ impl Account {
         let new_balance = self.balance - amount;
         Ok(self.create_block(new_balance, to, subtype)?)
     }
+
     // todo: change
 
     pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
         self.balance = balance;
         self.frontier = match hex::decode(frontier) {
             Ok(f) => f.try_into().unwrap(),
-            Err(e) => panic!("account load frontier error"),
+            Err(_) => panic!("account load frontier error"),
         };
         self.rep = rep;
     }

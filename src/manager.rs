@@ -13,24 +13,20 @@ const WORK_LOCAL: bool = false;
 pub struct Manager {
     pub rpc: rpc::ClientRpc,
     wallet: wallet::Wallet,
-    active_network_difficulty: [u8; 8],
 }
 
 impl Manager {
     pub async fn new(wallet: wallet::Wallet) -> Result<Manager, Box<dyn std::error::Error>> {
         let rpc = rpc::ClientRpc::new(PUBLIC_NANO_NODE_HOST)?;
-        let telem = rpc
-            .connect()
-            .await
-            .ok_or("could not connect to nano node")?;
-        let active_network_difficulty = hex::decode(telem.active_difficulty)?
-            .as_slice()
-            .try_into()?;
-        let mut m = Manager {
-            rpc,
-            wallet,
-            active_network_difficulty,
+        let telem = match rpc.connect().await {
+            Some(t) => t,
+            None => return Err("could not connect to nano node".into()),
         };
+        println!("\nconnected to network: {:?}\n", telem);
+        // let active_network_difficulty = hex::decode(telem.active_difficulty)?
+        //     .as_slice()
+        //     .try_into()?;
+        let mut m = Manager { rpc, wallet };
         m.synchronize().await?;
         Ok(m)
     }
@@ -66,18 +62,27 @@ impl Manager {
             Some(a) => a,
             None => return Err("from address not found".into()),
         };
-        Manager::cache_work(
-            from,
-            &self.rpc,
-            from.frontier.clone(),
-            work::DEFAULT_DIFFICULTY,
-        )
-        .await?;
+        if !from.has_work() {
+            Manager::cache_work(
+                from,
+                &self.rpc,
+                from.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
+        }
         let block = from.send(amount, to)?;
         if let Some(hash) = self.rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             from.accept_block(&block)?;
+            Manager::cache_work(
+                from,
+                &self.rpc,
+                from.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
             return Ok(hash.hash);
         }
         Err("could not process send block".into())
@@ -93,8 +98,7 @@ impl Manager {
                 for hash in pending.blocks {
                     if let Some(send_block_info) = self.rpc.block_info(&hash).await {
                         let sent_amount: u128 = send_block_info.amount.parse()?;
-                        let processed_hash =
-                            Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
+                        Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
                     }
                 }
             }
@@ -110,23 +114,34 @@ impl Manager {
     ) -> Result<String, Box<dyn Error>> {
         let block: block::NanoBlock;
         if account.frontier == [0u8; block::BLOCK_HASH_SIZE] {
-            Manager::cache_work(account, rpc, account.pk.clone(), work::RECV_DIFFICULTY).await?;
+            if !account.has_work() {
+                Manager::cache_work(account, rpc, account.pk.clone(), work::RECV_DIFFICULTY)
+                    .await?;
+            }
             block = account.open(amount, link)?;
         } else {
-            Manager::cache_work(
-                account,
-                rpc,
-                account.frontier.clone(),
-                work::RECV_DIFFICULTY,
-            )
-            .await?;
+            if !account.has_work() {
+                Manager::cache_work(
+                    account,
+                    rpc,
+                    account.frontier.clone(),
+                    work::RECV_DIFFICULTY,
+                )
+                .await?;
+            }
             block = account.receive(amount, link)?;
         }
         if let Some(hash) = rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             account.accept_block(&block)?;
-            // todo: precompute work?
+            Manager::cache_work(
+                account,
+                rpc,
+                account.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
             return Ok(hash.hash);
         }
         Err("could not process receive block".into())

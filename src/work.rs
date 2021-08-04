@@ -4,7 +4,7 @@ use std::sync::{
     mpsc::{self, Receiver, Sender},
     Arc, Mutex,
 };
-use std::time::SystemTime;
+//use std::time::SystemTime;
 
 const POW_LOCAL_WORKERS: u64 = 6;
 pub const RECV_DIFFICULTY: &str = "fffffe0000000000";

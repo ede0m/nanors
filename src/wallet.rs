@@ -3,8 +3,8 @@ use crate::encoding;
 use hex::FromHex;
 use std::convert::TryInto;
 use std::error::Error;
-use std::fs::OpenOptions;
 use std::fs;
+use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
 
@@ -31,8 +31,7 @@ impl Wallet {
 
     pub fn add_account(&mut self, pw: &str) -> Result<(), Box<dyn Error>> {
         let (_, n_acct, seed) = get_wallet_data(&self.name, pw)?;
-        self.accounts
-            .push(account::Account::new(n_acct, &seed)?);
+        self.accounts.push(account::Account::new(n_acct, &seed)?);
         self.save_wallet(pw, &seed)?;
         Ok(())
     }
@@ -53,14 +52,17 @@ impl Wallet {
     fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
         let (ciphertext, nonce) =
             encoding::aes_gcm_encrypt(pw.as_bytes(), seed, &self.name.as_bytes());
-        let new_wal_str = format!(            
+        let new_wal_str = format!(
             "{}|{}|{}|{}",
             self.name,
             self.accounts.len(),
             hex::encode_upper(&ciphertext),
             hex::encode_upper(&nonce)
         );
-        let mut lines : Vec<String> = fs::read_to_string(WALLET_FILE_PATH)?.lines().map(|l| l.to_string()).collect();
+        let mut lines: Vec<String> = fs::read_to_string(WALLET_FILE_PATH)?
+            .lines()
+            .map(|l| l.to_string())
+            .collect();
         if let Some((_, line_index)) = find_local_wallet(&self.name) {
             // remove old wallet if we are overwriting
             lines.remove(line_index);
@@ -70,12 +72,8 @@ impl Wallet {
         let mut file = OpenOptions::new()
             .write(true)
             .create(true)
-            .open(WALLET_FILE_PATH)?;     
-        writeln!(
-            file,
-            "{}",
-            lines
-        )?;
+            .open(WALLET_FILE_PATH)?;
+        writeln!(file, "{}", lines)?;
         Ok(())
     }
 }

@@ -1,6 +1,8 @@
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
+use nanors::account;
 use nanors::manager;
 use nanors::wallet;
+use regex::Regex;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
@@ -26,7 +28,7 @@ fn print_err(msg: &str) {
 }
 
 fn print_show(msg: &str) {
-    eprintln!("{}", console::style(msg).yellow());
+    println!("{}", console::style(msg).yellow());
 }
 
 fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
@@ -65,7 +67,7 @@ async fn wallet_init(load: bool) {
             let manager = manager::Manager::new(w)
                 .await
                 .expect("manager creation failed");
-            run_account_menu(manager)
+            run_account_menu(manager).await
         }
         Err(e) => print_err(&format!("\n{}\n", e)),
     }
@@ -82,7 +84,7 @@ fn wallet_prompt(confirm_pass: bool) -> (String, String) {
                 Err("name cannot be empty")
             }
         })
-        .interact_text()
+        .interact()
         .unwrap();
     let password;
     if confirm_pass {
@@ -116,22 +118,34 @@ fn wallets_show() {
     }
 }
 
-fn run_account_menu(mut manager: manager::Manager) {
-    let account_menu = &["new", "show", "back"];
+async fn run_account_menu(mut manager: manager::Manager) {
+    let account_menu = &["create", "send", "show", "back"];
     loop {
         println!("\n[nano:{}]:\n", manager.curr_wallet_name());
         let selection = menu_select(account_menu, "account options:");
         match selection {
-            "new" => {
+            "create" => {
                 println!();
                 manager
-                    .account_add(&account_prompt())
+                    .account_add(&account_prompt(manager.curr_wallet_name()))
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
-                println!();
+                print_show(&format!(
+                    "created new account for wallet {}",
+                    manager.curr_wallet_name()
+                ));
+            }
+            "send" => {
+                let (from, to, amount) = send_prompt(manager.get_accounts());
+                match manager.send(amount, &from, &to).await {
+                    Ok(h) => print_show(&format!("success. block hash: {}", h)),
+                    Err(e) => print_err(&format!("\n{}\n", e)),
+                };
             }
             "show" => {
                 println!();
-                manager.accounts_show().iter().for_each(|s| print_show(&s));
+                manager.get_accounts().iter().for_each(|a| {
+                    print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance))
+                });
                 println!();
             }
             "back" => break,
@@ -140,9 +154,54 @@ fn run_account_menu(mut manager: manager::Manager) {
     }
 }
 
-fn account_prompt() -> String {
+fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u128) {
+    let from = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("from account:")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if valid_accounts.iter().find(|a| a.addr == *input).is_some() {
+                Ok(())
+            } else {
+                Err("account not in this wallet")
+            }
+        })
+        .interact()
+        .unwrap();
+    let from_info = valid_accounts.iter().find(|a| a.addr == from).unwrap();
+    let re = Regex::new(r"^(nano|xrb)_[13]{1}[13456789abcdefghijkmnopqrstuwxyz]{59}$").unwrap();
+    let to = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("to account:")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            // todo: validate with checksum
+            if re.is_match(input) {
+                Ok(())
+            } else {
+                Err("not a valid nano address")
+            }
+        })
+        .interact()
+        .unwrap();
+    let amount: u128 = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("amount to send:")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            let amount =  match input.parse::<u128>() {
+                Ok(a) => a,
+                Err(_) => return Err("cannot parse this amount"),
+            };
+            if amount > from_info.balance {
+                return Err("you do not have this much");
+            }
+            Ok(())
+        })
+        .interact()
+        .unwrap()
+        .parse()
+        .unwrap();
+    (from, to, amount)
+}
+
+fn account_prompt(wal_name: &str) -> String {
     let password = Password::with_theme(&ColorfulTheme::default())
-        .with_prompt("password")
+        .with_prompt(format!("password for {}", wal_name))
         .interact()
         .unwrap();
     password

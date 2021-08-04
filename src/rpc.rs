@@ -62,7 +62,7 @@ pub struct RPCTelemetryResp {
 pub struct RPCProcessReq {
     action: String,
     json_block: bool,
-    subtype: String,
+    subtype: block::SubType,
     block: block::NanoBlock,
 }
 
@@ -83,13 +83,13 @@ impl ClientRpc {
         match v {
             Err(e) => {
                 eprintln!(
-                    "\n node connection unsucessful. please try a different node.\n error: {:#?}",
+                    "\nnode connection unsucessful. please try a different node.\n error: {:#?}",
                     e
                 );
                 None
             }
             Ok(v) => {
-                println!("connected: {:?}", v);
+                println!("\nconnected to network: {:?}\n", v);
                 v
             }
         }
@@ -138,20 +138,17 @@ impl ClientRpc {
     }
 
     pub async fn process(&self, block: &block::NanoBlock) -> Option<RPCProcessResp> {
-        let subtype = block
-            .subtype
-            .as_ref()
-            .expect("block to process missing subtype");
+        let subtype = block.subtype.expect("block to process missing subtype");
         let r = RPCProcessReq {
             action: String::from("process"),
             json_block: true,
-            subtype: String::from(subtype),
+            subtype: subtype,
             block: block.clone(),
         };
         //println!("{:#?}", r);
         match self.rpc_post::<RPCProcessResp, RPCProcessReq>(r).await {
             Err(e) => {
-                eprintln!("\n rpc process failed.\n error: {:#?}", e);
+                eprintln!("\nrpc process failed.\n error: {:#?}", e);
                 None
             }
             Ok(v) => {
@@ -187,7 +184,7 @@ impl ClientRpc {
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
         let resp = resp.text().await?;
-        //println!("\nbody: {}\n", resp);
+        println!("\nbody: {}\n", resp);
         let resp: Option<T> = match serde_json::from_str(&resp) {
             Ok(t) => Some(t),
             Err(e) => {

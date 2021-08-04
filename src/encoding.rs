@@ -2,7 +2,7 @@ use aes_gcm::aead::{Aead, NewAead};
 use aes_gcm::{Aes128Gcm, Nonce};
 use bitvec::prelude::*;
 use blake2::digest::{Update, VariableOutput};
-use blake2::{Blake2b, Digest, VarBlake2b};
+use blake2::{VarBlake2b};
 use hkdf::Hkdf;
 use rand::Rng;
 use sha2::Sha256;
@@ -94,12 +94,6 @@ pub fn blake2bv(
     let mut hasher = VarBlake2b::new(digest_size)?;
     hasher.update(message);
     Ok(hasher.finalize_boxed())
-}
-
-pub fn blake2b(message: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let mut hasher = Blake2b::new();
-    blake2::Digest::update(&mut hasher, message);
-    Ok(hasher.finalize().as_slice().to_vec())
 }
 
 #[cfg(test)]

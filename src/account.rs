@@ -8,6 +8,7 @@ use std::convert::TryInto;
 use std::error::Error;
 
 const RECV_DIFFICULTY: &str = "fffffe0000000000";
+const DEFAULT_DIFFICULTY: &str = "fffffff800000000";
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 
 pub struct Account {
@@ -19,6 +20,13 @@ pub struct Account {
     pub pk: [u8; 32],
     sk: [u8; 32],
     kp: Keypair,
+}
+
+#[derive(Debug, Clone)]
+pub struct AccountInfo {
+    pub index: u32,
+    pub addr: String,
+    pub balance: u128,
 }
 
 impl Account {
@@ -64,31 +72,37 @@ impl Account {
 
     pub fn receive(
         &mut self,
-        sent_amount: u128,
+        amount: u128,
         link: &str,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {
-        let subtype = "receive";
+        let subtype = block::SubType::Receive;
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
+        // https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
+        let work = hex::encode(manager::Manager::pow_local(
+            self.frontier.clone(),
+            &difficulty,
+        )?);
+        let new_balance = self.balance + amount;
+        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
+    }
+
+    pub fn open(&mut self, amount: u128, link: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
+        let subtype = block::SubType::Open;
+        let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
+        let work = hex::encode(manager::Manager::pow_local(self.pk.clone(), &difficulty)?);
+        let new_balance = self.balance + amount;
+        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
+    }
+
+    pub fn send(&mut self, amount: u128, to: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
+        let subtype = block::SubType::Send;
+        let difficulty: [u8; 8] = hex::decode(DEFAULT_DIFFICULTY)?.as_slice().try_into()?;
         let previous = self.frontier.clone();
-        let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
-        let new_balance = self.balance + sent_amount;
-        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
+        //let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
+        let work = "87131e02000000c0"; // precomputed for test
+        let new_balance = self.balance - amount;
+        Ok(self.create_block(new_balance, to, subtype, Some(&work))?)
     }
-
-    pub fn open(
-        &mut self,
-        sent_amount: u128,
-        link: &str,
-    ) -> Result<block::NanoBlock, Box<dyn Error>> {
-        let subtype = "open";
-        let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
-        let previous = [0u8; block::BLOCK_HASH_SIZE];
-        let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
-        let new_balance = self.balance + sent_amount;
-        Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
-    }
-
-    // todo: send
     // todo: change
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
@@ -134,7 +148,7 @@ impl Account {
         &self,
         new_balance: u128,
         link: &str,
-        subtype: &str,
+        subtype: block::SubType,
         work: Option<&str>,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {
         let mut b = block::NanoBlock::new(

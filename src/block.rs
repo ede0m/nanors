@@ -19,8 +19,18 @@ pub struct NanoBlock {
     pub signature: Option<String>,
     pub work: Option<String>,
     pub hash: Option<String>,
-    pub subtype: Option<String>,
+    pub subtype: Option<SubType>,
 }
+
+#[derive(Deserialize, Serialize, Debug, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum SubType {
+    Send,
+    Open,
+    Receive,
+    Change,
+}
+// todo: need string rep for serializing to process req.
 
 impl NanoBlock {
     pub fn new(
@@ -29,7 +39,7 @@ impl NanoBlock {
         rep: &str,
         new_balance: u128,
         link: &str,
-        subtype: &str,
+        subtype: SubType,
         work: Option<&str>,
     ) -> Result<NanoBlock, Box<dyn Error>> {
         let work = if work.is_some() {
@@ -47,7 +57,7 @@ impl NanoBlock {
             signature: None,
             hash: None,
             work: work,
-            subtype: Some(String::from(subtype)),
+            subtype: Some(subtype),
         };
         b.set_hash()?;
         Ok(b)
@@ -60,7 +70,15 @@ impl NanoBlock {
         let pk_acct = account::decode_addr(&self.account)?;
         let pk_rep = account::decode_addr(&self.representative)?;
         let bal: [u8; 16] = self.balance.parse::<u128>()?.to_be_bytes();
-        let link = &hex::decode(&self.link)?[..];
+        let link = match self.subtype {
+            Some(SubType::Send) => account::decode_addr(&self.link)?,
+            Some(SubType::Receive) | Some(SubType::Open) => {
+                hex::decode(&self.link)?[..].try_into()?
+            }
+            Some(SubType::Change) => panic!("todo"),
+            None => panic!("todo"),
+        };
+
         let blk_data = [&preamble, &pk_acct, prev, &pk_rep, &bal, &link].concat();
         /*println!(
             "\nblk_data size:\t{}\n pre:\t{:02X?}\n acct:\t{:02X?}\n prev:\t{:02X?}\n rep:\t{:02X?}\n bal:\t{:02X?}\n link:\t{:02X?}\n",

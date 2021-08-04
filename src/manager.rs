@@ -40,15 +40,39 @@ impl Manager {
         Ok(m)
     }
 
+    pub async fn send(
+        &mut self,
+        amount: u128,
+        from: &str,
+        to: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        let from = match self.wallet.accounts.iter_mut().find(|a| a.addr == from) {
+            Some(a) => a,
+            None => return Err("from address not found".into()),
+        };
+        let block = from.send(amount, to)?;
+        if let Some(hash) = self.rpc.process(&block).await {
+            // todo: just do this in acct.create_block.
+            // do a rollback somehow..?
+            from.accept_block(&block)?;
+            return Ok(hash.hash);
+        }
+        Err("could not process send block".into())
+    }
+
     pub fn curr_wallet_name(&self) -> &str {
         &self.wallet.name
     }
 
-    pub fn accounts_show(&self) -> Vec<String> {
+    pub fn get_accounts(&self) -> Vec<account::AccountInfo> {
         self.wallet
             .accounts
             .iter()
-            .map(|a| format!("  {} : {} : {}", a.index, a.addr, a.balance))
+            .map(|a| account::AccountInfo {
+                index: a.index,
+                addr: a.addr.clone(),
+                balance: a.balance,
+            })
             .collect()
     }
 
@@ -96,7 +120,7 @@ impl Manager {
             account.accept_block(&block)?;
             return Ok(hash.hash);
         }
-        Err("could not process block".into())
+        Err("could not process receive block".into())
     }
 
     //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details

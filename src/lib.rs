@@ -4,3 +4,4 @@ pub mod encoding;
 pub mod manager;
 pub mod rpc;
 pub mod wallet;
+pub mod work;

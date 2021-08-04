@@ -1,6 +1,6 @@
 use crate::block;
 use crate::encoding;
-use crate::manager;
+use crate::work;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
@@ -78,7 +78,7 @@ impl Account {
         let subtype = block::SubType::Receive;
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
         // https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
-        let work = hex::encode(manager::Manager::pow_local(
+        let work = hex::encode(work::pow_local(
             self.frontier.clone(),
             &difficulty,
         )?);
@@ -89,7 +89,7 @@ impl Account {
     pub fn open(&mut self, amount: u128, link: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
         let subtype = block::SubType::Open;
         let difficulty: [u8; 8] = hex::decode(RECV_DIFFICULTY)?.as_slice().try_into()?;
-        let work = hex::encode(manager::Manager::pow_local(self.pk.clone(), &difficulty)?);
+        let work = hex::encode(work::pow_local(self.pk.clone(), &difficulty)?);
         let new_balance = self.balance + amount;
         Ok(self.create_block(new_balance, link, subtype, Some(&work))?)
     }
@@ -98,8 +98,7 @@ impl Account {
         let subtype = block::SubType::Send;
         let difficulty: [u8; 8] = hex::decode(DEFAULT_DIFFICULTY)?.as_slice().try_into()?;
         let previous = self.frontier.clone();
-        //let work = hex::encode(manager::Manager::pow_local(previous, &difficulty)?);
-        let work = "87131e02000000c0"; // precomputed for test
+        let work = hex::encode(work::pow_local(previous, &difficulty)?);
         let new_balance = self.balance - amount;
         Ok(self.create_block(new_balance, to, subtype, Some(&work))?)
     }

@@ -10,6 +10,12 @@ const POW_LOCAL_WORKERS: u64 = 6;
 pub const RECV_DIFFICULTY: &str = "fffffe0000000000";
 pub const DEFAULT_DIFFICULTY: &str = "fffffff800000000";
 
+pub enum WorkStatus {
+    Empty,
+    Working,
+    Finished(String),
+}
+
 //https://docs.nano.org/integration-guides/work-generation/#work-calculation-details
 pub fn pow_local(previous: [u8; 32], threshold: &[u8; 8]) -> Result<[u8; 8], Box<dyn Error>> {
     let threshold = threshold.clone();

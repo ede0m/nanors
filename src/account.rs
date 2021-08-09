@@ -1,5 +1,6 @@
 use crate::block;
 use crate::encoding;
+use crate::work;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
@@ -16,7 +17,7 @@ pub struct Account {
     pub rep: String,
     pub pk: [u8; 32],
     kp: Keypair,
-    work_cache: Option<String>,
+    work_cache: work::WorkStatus,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +45,7 @@ impl Account {
             rep,
             pk,
             kp,
-            work_cache: None,
+            work_cache: work::WorkStatus::Empty,
         })
     }
 
@@ -85,7 +86,7 @@ impl Account {
         self.balance = block.balance.parse()?;
         if let Some(hash) = &block.hash {
             self.frontier = hex::decode(hash)?.as_slice().try_into()?;
-            self.work_cache = None;
+            self.work_cache = work::WorkStatus::Empty;
         } else {
             return Err("no hash on block to accept".into());
         }
@@ -93,11 +94,11 @@ impl Account {
     }
 
     pub fn cache_work(&mut self, work: String) {
-        self.work_cache = Some(work);
+        self.work_cache = work::WorkStatus::Finished(work);
     }
 
     pub fn has_work(&self) -> bool {
-        self.work_cache.is_some()
+        matches!(self.work_cache, work::WorkStatus::Finished(_))
     }
 
     //https://docs.nano.org/integration-guides/the-basics/#seed
@@ -145,20 +146,22 @@ impl Account {
         link: &str,
         subtype: block::SubType,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {
-        if self.work_cache.is_none() {
+        if let work::WorkStatus::Finished(w) = &self.work_cache {
+            let mut b = block::NanoBlock::new(
+                &self.addr,
+                &self.frontier,
+                &self.rep,
+                new_balance,
+                link,
+                subtype,
+                String::from(w),
+            )?;
+            self.sign(&mut b)?;
+            Ok(b)
+        }
+        else {
             return Err("block does not have work".into());
         }
-        let mut b = block::NanoBlock::new(
-            &self.addr,
-            &self.frontier,
-            &self.rep,
-            new_balance,
-            link,
-            subtype,
-            self.work_cache.clone().unwrap(),
-        )?;
-        self.sign(&mut b)?;
-        Ok(b)
     }
 
     fn sign(&self, block: &mut block::NanoBlock) -> Result<(), Box<dyn Error>> {

@@ -3,40 +3,59 @@ use crate::block;
 use crate::rpc;
 use crate::wallet;
 use crate::work;
+use crate::ws;
 
+use futures_util::StreamExt;
 use std::convert::TryInto;
 use std::error::Error;
+use tokio::sync::mpsc;
 
-const PUBLIC_NANO_NODE_HOST: &str = "https://mynano.ninja/api/node";
 const WORK_LOCAL: bool = false;
 
 pub struct Manager {
-    pub rpc: rpc::ClientRpc,
-    wallet: wallet::Wallet,
+    rpc: Box<rpc::ClientRpc>,
+    ws: Box<ws::ClientWS>,
+    wallet: Option<wallet::Wallet>,
 }
 
 impl Manager {
-    pub async fn new(wallet: wallet::Wallet) -> Result<Manager, Box<dyn std::error::Error>> {
-        let rpc = rpc::ClientRpc::new(PUBLIC_NANO_NODE_HOST)?;
-        let telem = match rpc.connect().await {
-            Some(t) => t,
-            None => return Err("could not connect to nano node".into()),
-        };
-        println!("\nconnected to network: {:?}\n", telem);
-        // let active_network_difficulty = hex::decode(telem.active_difficulty)?
-        //     .as_slice()
-        //     .try_into()?;
-        let mut m = Manager { rpc, wallet };
-        m.synchronize().await?;
-        Ok(m)
+    pub fn new(
+        rpc: Box<rpc::ClientRpc>,
+        ws: Box<ws::ClientWS>,
+    ) -> Result<Manager, Box<dyn std::error::Error>> {
+        Ok(Manager {
+            rpc,
+            ws,
+            wallet: None,
+        })
     }
 
-    pub fn curr_wallet_name(&self) -> &str {
-        &self.wallet.name
+    pub fn has_wallet(&self) -> bool {
+        self.wallet.is_some()
+    }
+
+    pub async fn set_wallet(&'static mut self, wallet: wallet::Wallet) -> Result<(), Box<dyn Error>> {
+        self.wallet = Some(wallet);
+        let telem = self.rpc.connect().await?;
+        println!("\nconnected to network: {:?}\n", telem);
+        self.synchronize().await?;
+        Ok(())
+    }
+
+    pub fn curr_wallet_name(&self) -> Option<&str> {
+        if self.wallet.is_none() {
+            return None;
+        }
+        Some(&self.wallet.as_ref().unwrap().name)
     }
 
     pub fn get_accounts(&self) -> Vec<account::AccountInfo> {
+        if self.wallet.is_none() {
+            return vec![];
+        }
         self.wallet
+            .as_ref()
+            .unwrap()
             .accounts
             .iter()
             .map(|a| account::AccountInfo {
@@ -48,7 +67,11 @@ impl Manager {
     }
 
     pub fn account_add(&mut self, pw: &str) -> Result<(), Box<dyn Error>> {
-        self.wallet.add_account(pw)?;
+        if self.wallet.is_some() {
+            self.wallet.as_mut().unwrap().add_account(pw)?;
+        } else {
+            return Err("no wallet set".into());
+        }
         Ok(())
     }
 
@@ -58,7 +81,17 @@ impl Manager {
         from: &str,
         to: &str,
     ) -> Result<String, Box<dyn Error>> {
-        let from = match self.wallet.accounts.iter_mut().find(|a| a.addr == from) {
+        if self.wallet.is_none() {
+            return Err("no wallet set".into());
+        }
+        let from = match self
+            .wallet
+            .as_mut()
+            .unwrap()
+            .accounts
+            .iter_mut()
+            .find(|a| a.addr == from)
+        {
             Some(a) => a,
             None => return Err("from address not found".into()),
         };
@@ -88,8 +121,10 @@ impl Manager {
         Err("could not process send block".into())
     }
 
-    async fn synchronize(&mut self) -> Result<(), Box<dyn Error>> {
-        for a in &mut self.wallet.accounts {
+    async fn synchronize(&'static mut self) -> Result<(), Box<dyn Error>> {
+        let mut acct_addrs = vec![];
+        for a in &mut self.wallet.as_mut().unwrap().accounts {
+            acct_addrs.push(a.addr.clone());
             // query nano node and populate ancillary account info
             if let Some(info) = self.rpc.account_info(&a.addr).await {
                 a.load(info.balance.parse()?, info.frontier, info.representative);
@@ -103,6 +138,21 @@ impl Manager {
                 }
             }
         }
+        // websocket recv confirmations in background   
+        self.ws.subscribe_confirmation(acct_addrs).await?;
+        let handle = tokio::spawn(async move {
+            let (tx, mut rx) = mpsc::channel::<tokio_tungstenite::tungstenite::Message>(20);
+            tokio::spawn(async move {
+                if let Err(e) = self.ws.watch_confirmation(tx).await {
+                    panic!(format!("{:?}",e));
+                }
+            });
+            while let Some(msg) = rx.recv().await {
+                //Manager::receive(&self.rpc, sent_amount, &hash, a).await.unwrap();
+                println!("{}", msg);
+            }
+        });
+        //handle.await.unwrap();
         Ok(())
     }
 

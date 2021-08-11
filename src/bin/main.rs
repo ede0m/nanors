@@ -1,23 +1,40 @@
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use nanors::account;
 use nanors::manager;
+use nanors::rpc;
 use nanors::wallet;
+use nanors::ws;
 use regex::Regex;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
+const PUBLIC_NANO_HTTP: &str = "https://mynano.ninja/api/node";
+const PUBLIC_NANO_WS: &str = "wss://ws.mynano.ninja/";
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {   
     let main_menu = &["wallet"];
     let wallet_menu = &["new", "load", "show", "back"];
-
     println!("\n    nanors v0.1.0\n    -------------\n");
-    loop {
-        let selection = menu_select(main_menu, "sub-menu:");
-        match selection {
-            "wallet" => run_wallet_menu(wallet_menu).await,
-            "exit" => break,
-            _ => print_err(&format!("{} unrecognized", selection)),
+    let rpc = rpc::ClientRpc::new(PUBLIC_NANO_HTTP);
+    let ws = ws::ClientWS::new(PUBLIC_NANO_WS).await;
+    if rpc.is_err() || ws.is_err() {
+        print_err("could not initalize manager dependencies");
+    } else {
+        let mut m = match manager::Manager::new(Box::new(rpc.unwrap()), Box::new(ws.unwrap())) {
+            Ok(m) => m,
+            Err(e) => {
+                print_err("could not initalize manager");
+                return Ok(());
+            }
+        };
+        loop {
+            let selection = menu_select(main_menu, "sub-menu:");
+            match selection {
+                "wallet" => run_wallet_menu(wallet_menu, &mut m).await,
+                "exit" => break,
+                _ => print_err(&format!("{} unrecognized", selection)),
+            }
         }
     }
     Ok(())
@@ -40,20 +57,39 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
     menu[idx_selected]
 }
 
-async fn run_wallet_menu(menu: &[&str]) {
+async fn run_wallet_menu(menu: &[&str], manager : &'static mut manager::Manager) {
     loop {
+        let mut w : Option<Result<wallet::Wallet, Box<dyn std::error::Error>>> = None;
         let selection = menu_select(menu, "wallet options:");
         match selection {
-            "new" => wallet_init(false).await,
-            "load" => wallet_init(true).await,
+            "new" => {
+                w = Some(wallet_init(false).await);
+            },
+            "load" => {
+                w = Some(wallet_init(true).await);
+            },
             "show" => wallets_show(),
             "back" => break,
             _ => print_err(&format!("unrecognized command {}", selection)),
         }
+        
+        if w.is_some() {
+            if let Err(e) = w.as_ref().unwrap() {
+                print_err(&format!("\n{}\n", e));
+                continue;
+            }
+            let wal = w.unwrap().unwrap();
+            if let Err(e) = manager.set_wallet(wal).await {
+                print_err(&format!("\n{}\n", e));
+                continue;
+            } 
+            run_account_menu(&mut manager).await;
+        }
     }
+    
 }
 
-async fn wallet_init(load: bool) {
+async fn wallet_init(load: bool) -> Result<wallet::Wallet, Box<dyn std::error::Error>> {
     let w: Result<wallet::Wallet, Box<dyn std::error::Error>>;
     if load {
         let (name, password) = wallet_prompt(false);
@@ -62,15 +98,7 @@ async fn wallet_init(load: bool) {
         let (name, password) = wallet_prompt(true);
         w = wallet::Wallet::new(&name, &password);
     }
-    match w {
-        Ok(w) => {
-            match manager::Manager::new(w).await {
-                Ok(m) => run_account_menu(m).await,
-                Err(e) => print_err(&format!("\n{}\n", e)),
-            };   
-        }
-        Err(e) => print_err(&format!("\n{}\n", e)),
-    }
+    w
 }
 
 fn wallet_prompt(confirm_pass: bool) -> (String, String) {
@@ -118,20 +146,21 @@ fn wallets_show() {
     }
 }
 
-async fn run_account_menu(mut manager: manager::Manager) {
+async fn run_account_menu(manager: &mut manager::Manager) {
     let account_menu = &["create", "send", "show", "back"];
+    let curr_wallet_name = String::from(manager.curr_wallet_name().unwrap());
     loop {
-        println!("\n[nano:{}]:\n", manager.curr_wallet_name());
+        println!("\n[nano:{:?}]:\n", curr_wallet_name);
         let selection = menu_select(account_menu, "account options:");
         match selection {
             "create" => {
                 println!();
                 manager
-                    .account_add(&account_prompt(manager.curr_wallet_name()))
+                    .account_add(&account_prompt(&curr_wallet_name))
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
                 print_show(&format!(
                     "\ncreated new account for wallet {}",
-                    manager.curr_wallet_name()
+                    curr_wallet_name
                 ));
             }
             "send" => {

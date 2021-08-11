@@ -158,8 +158,7 @@ impl Account {
             )?;
             self.sign(&mut b)?;
             Ok(b)
-        }
-        else {
+        } else {
             return Err("block does not have work".into());
         }
     }

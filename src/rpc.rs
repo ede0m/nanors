@@ -80,22 +80,24 @@ impl ClientRpc {
         })
     }
 
-    pub async fn connect(&self) -> Option<RPCTelemetryResp> {
+    pub async fn connect(
+        &self,
+    ) -> std::result::Result<RPCTelemetryResp, Box<dyn std::error::Error>> {
         let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "telemetry")]));
         let v = self
             .rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r)
             .await;
         match v {
             Err(e) => {
-                eprintln!(
-                    "\nnode connection unsucessful. please try a different node.\n error: {:#?}",
+                return Err(format!(
+                    "node connection unsucessful. please try a different node.\nerror: {:?}",
                     e
-                );
-                None
+                )
+                .into());
             }
             Ok(v) => {
                 //println!("\nconnected to network: {:?}\n", v);
-                v
+                Ok(v.unwrap())
             }
         }
     }

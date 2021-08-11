@@ -5,27 +5,27 @@ use crate::wallet;
 use crate::work;
 use crate::ws;
 
-use futures_util::StreamExt;
 use std::convert::TryInto;
 use std::error::Error;
 use tokio::sync::mpsc;
 
+const PUBLIC_NANO_HTTP: &str = "https://mynano.ninja/api/node";
+const PUBLIC_NANO_WS: &str = "wss://ws.mynano.ninja/";
 const WORK_LOCAL: bool = false;
 
 pub struct Manager {
     rpc: Box<rpc::ClientRpc>,
-    ws: Box<ws::ClientWS>,
+    //ws: Box<ws::ClientWS>,
     wallet: Option<wallet::Wallet>,
 }
 
 impl Manager {
-    pub fn new(
-        rpc: Box<rpc::ClientRpc>,
-        ws: Box<ws::ClientWS>,
-    ) -> Result<Manager, Box<dyn std::error::Error>> {
+    pub async fn new() -> Result<Manager, Box<dyn std::error::Error>> {
+        let rpc = Box::new(rpc::ClientRpc::new(PUBLIC_NANO_HTTP)?);
+        //let ws = Box::new(ws::ClientWS::new(PUBLIC_NANO_WS).await?);
         Ok(Manager {
             rpc,
-            ws,
+            //ws,
             wallet: None,
         })
     }
@@ -34,7 +34,7 @@ impl Manager {
         self.wallet.is_some()
     }
 
-    pub async fn set_wallet(&'static mut self, wallet: wallet::Wallet) -> Result<(), Box<dyn Error>> {
+    pub async fn set_wallet(&mut self, wallet: wallet::Wallet) -> Result<(), Box<dyn Error>> {
         self.wallet = Some(wallet);
         let telem = self.rpc.connect().await?;
         println!("\nconnected to network: {:?}\n", telem);
@@ -121,7 +121,7 @@ impl Manager {
         Err("could not process send block".into())
     }
 
-    async fn synchronize(&'static mut self) -> Result<(), Box<dyn Error>> {
+    async fn synchronize(&mut self) -> Result<(), Box<dyn Error>> {
         let mut acct_addrs = vec![];
         for a in &mut self.wallet.as_mut().unwrap().accounts {
             acct_addrs.push(a.addr.clone());
@@ -130,20 +130,24 @@ impl Manager {
                 a.load(info.balance.parse()?, info.frontier, info.representative);
             }
             if let Some(pending) = self.rpc.pending(&a.addr).await {
-                for hash in pending.blocks {
-                    if let Some(send_block_info) = self.rpc.block_info(&hash).await {
-                        let sent_amount: u128 = send_block_info.amount.parse()?;
-                        Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
-                    }
+                if pending.blocks.is_some() {
+                    for hash in pending.blocks.unwrap() {
+                        if let Some(send_block_info) = self.rpc.block_info(&hash).await {
+                            let sent_amount: u128 = send_block_info.amount.parse()?;
+                            Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
+                        }
+                    }   
                 }
             }
         }
+        
         // websocket recv confirmations in background   
-        self.ws.subscribe_confirmation(acct_addrs).await?;
+        let mut ws = Box::new(ws::ClientWS::new(PUBLIC_NANO_WS).await?);
+        ws.subscribe_confirmation(acct_addrs).await?;
         let handle = tokio::spawn(async move {
             let (tx, mut rx) = mpsc::channel::<tokio_tungstenite::tungstenite::Message>(20);
             tokio::spawn(async move {
-                if let Err(e) = self.ws.watch_confirmation(tx).await {
+                if let Err(e) = ws.watch_confirmation(tx).await {
                     panic!(format!("{:?}",e));
                 }
             });

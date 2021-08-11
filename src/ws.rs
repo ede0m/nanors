@@ -62,7 +62,8 @@ impl ClientWS {
         //Stream recv block confirmations...
         while let Some(msg) = self.stream.next().await {
             let msg = msg?;
-            sender.send(msg);
+            println!("{}", msg);
+            sender.send(msg).await?;
         }
         Err("ws: confirmation ended".into())
     }

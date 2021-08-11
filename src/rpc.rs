@@ -1,15 +1,15 @@
 // View other options of Public Nano Nodes: https://publicnodes.somenano.com
 // https://docs.nano.org/commands/rpc-protocol/#node-rpcs
 use crate::block;
-use reqwest::*;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use reqwest::Client;
+use serde::{de::{DeserializeOwned,IntoDeserializer}, Deserialize, Serialize, Deserializer};
 use std::array::IntoIter;
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
 pub struct ClientRpc {
     server_addr: String,
-    client: reqwest::Client, // todo: make trait object based on protocol??
+    client: reqwest::Client,
 }
 
 #[derive(Deserialize, Debug)]
@@ -28,7 +28,21 @@ pub struct RPCAccountInfoResp {
 
 #[derive(Deserialize, Debug)]
 pub struct RPCPendingResp {
-    pub blocks: Vec<String>,
+    #[serde(deserialize_with = "empty_string_is_none")]
+    pub blocks: Option<Vec<String>>,
+}
+
+fn empty_string_is_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    let opt = Option::<String>::deserialize(de)?;
+    let opt = opt.as_ref().map(String::as_str);
+    match opt {
+        None | Some("") => Ok(None),
+        Some(s) => T::deserialize(s.into_deserializer()).map(Some)
+    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -72,8 +86,8 @@ pub struct RPCProcessReq {
 }
 
 impl ClientRpc {
-    pub fn new(addr: &str) -> Result<ClientRpc> {
-        let client = reqwest::Client::builder().build()?;
+    pub fn new(addr: &str) -> Result<ClientRpc, Box<dyn std::error::Error>> {
+        let client = Client::builder().build()?;
         Ok(ClientRpc {
             server_addr: String::from(addr),
             client: client,
@@ -202,21 +216,25 @@ impl ClientRpc {
         }
     }
 
-    async fn rpc_post<T, P>(&self, r: P) -> Result<Option<T>>
+    async fn rpc_post<T, P>(&self, r: P) -> Result<Option<T>, Box<dyn std::error::Error>>
     where
         T: DeserializeOwned,
         P: Serialize,
     {
         let resp = self.client.post(&self.server_addr).json(&r).send().await?;
+        let status = resp.status();
         let resp = resp.text().await?;
-        //println!("\nbody: {}\n", resp);
-        let resp: Option<T> = match serde_json::from_str(&resp) {
-            Ok(t) => Some(t),
-            Err(_) => {
+        if status.is_client_error() || status.is_server_error() {
+            return Err(format!("received {} from node. error: {}", status, resp).into());
+        }
+        //println!("\nstatus: {}, body: {}\n", status, resp);
+        let resp = match serde_json::from_str(&resp) {
+            Ok(t) => Ok(Some(t)),
+            Err(e) => {
                 //eprintln!("{:?}", e);
-                None
+                Err(format!("response serialization error: {:?}", e).into())
             }
         };
-        Ok(resp)
+        resp
     }
 }

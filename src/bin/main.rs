@@ -1,42 +1,33 @@
 use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use nanors::account;
 use nanors::manager;
-use nanors::rpc;
 use nanors::wallet;
-use nanors::ws;
 use regex::Regex;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
-const PUBLIC_NANO_HTTP: &str = "https://mynano.ninja/api/node";
-const PUBLIC_NANO_WS: &str = "wss://ws.mynano.ninja/";
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {   
-    let main_menu = &["wallet"];
+    let main_menu = &["wallet", "exit"];
     let wallet_menu = &["new", "load", "show", "back"];
     println!("\n    nanors v0.1.0\n    -------------\n");
-    let rpc = rpc::ClientRpc::new(PUBLIC_NANO_HTTP);
-    let ws = ws::ClientWS::new(PUBLIC_NANO_WS).await;
-    if rpc.is_err() || ws.is_err() {
-        print_err("could not initalize manager dependencies");
-    } else {
-        let mut m = match manager::Manager::new(Box::new(rpc.unwrap()), Box::new(ws.unwrap())) {
-            Ok(m) => m,
-            Err(e) => {
-                print_err("could not initalize manager");
-                return Ok(());
-            }
-        };
-        loop {
-            let selection = menu_select(main_menu, "sub-menu:");
-            match selection {
-                "wallet" => run_wallet_menu(wallet_menu, &mut m).await,
-                "exit" => break,
-                _ => print_err(&format!("{} unrecognized", selection)),
-            }
+
+    let mut m = match manager::Manager::new().await {
+        Ok(m) => m,
+        Err(e) => {
+            print_err(&format!("could not initalize manager: {:?}", e));
+            return Ok(());
+        }
+    };
+    loop {
+        let selection = menu_select(main_menu, "sub-menu:");
+        match selection {
+            "wallet" => run_wallet_menu(wallet_menu, &mut m).await,
+            "exit" => break,
+            _ => print_err(&format!("{} unrecognized", selection)),
         }
     }
+    
     Ok(())
 }
 
@@ -57,33 +48,37 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
     menu[idx_selected]
 }
 
-async fn run_wallet_menu(menu: &[&str], manager : &'static mut manager::Manager) {
+async fn run_wallet_menu(menu: &[&str], manager : &mut manager::Manager) {
     loop {
-        let mut w : Option<Result<wallet::Wallet, Box<dyn std::error::Error>>> = None;
         let selection = menu_select(menu, "wallet options:");
         match selection {
             "new" => {
-                w = Some(wallet_init(false).await);
+                let w = wallet_init(true).await;
+                if let Err(e) = w {
+                    print_err(&format!("\n{}\n", e));
+                    continue;
+                }                
+                if let Err(e) = manager.set_wallet(w.unwrap()).await {
+                    print_err(&format!("\n{}\n", e));
+                    continue;
+                }
+                run_account_menu(manager).await;
             },
             "load" => {
-                w = Some(wallet_init(true).await);
+                let w = wallet_init(true).await;
+                if let Err(e) = w {
+                    print_err(&format!("\n{}\n", e));
+                    continue;
+                }
+                if let Err(e) = manager.set_wallet(w.unwrap()).await {
+                    print_err(&format!("\n{}\n", e));
+                    continue;
+                } 
+                run_account_menu(manager).await;
             },
             "show" => wallets_show(),
             "back" => break,
             _ => print_err(&format!("unrecognized command {}", selection)),
-        }
-        
-        if w.is_some() {
-            if let Err(e) = w.as_ref().unwrap() {
-                print_err(&format!("\n{}\n", e));
-                continue;
-            }
-            let wal = w.unwrap().unwrap();
-            if let Err(e) = manager.set_wallet(wal).await {
-                print_err(&format!("\n{}\n", e));
-                continue;
-            } 
-            run_account_menu(&mut manager).await;
         }
     }
     

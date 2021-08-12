@@ -230,7 +230,7 @@ impl ClientRpc {
         if status.is_client_error() || status.is_server_error() {
             return Err(format!("received {} from node. error: {}", status, resp).into());
         }
-        println!("\nstatus: {}, body: {}\n", status, resp);
+        //println!("\nstatus: {}, body: {}\n", status, resp);
         let resp = match serde_json::from_str(&resp) {
             Ok(t) => Ok(Some(t)),
             Err(e) => {

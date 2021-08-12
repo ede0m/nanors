@@ -1,3 +1,5 @@
+use crate::block;
+
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
@@ -24,6 +26,7 @@ pub struct WSConfirmationMessage {
     pub account: String,
     pub amount: String,
     pub hash: String,
+    pub block: block::NanoBlock
 }
 
 #[derive(Serialize, Deserialize)]

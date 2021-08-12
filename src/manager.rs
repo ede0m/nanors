@@ -163,15 +163,17 @@ impl Manager {
         let handle = tokio::spawn(async move {
             let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
             while let Some(msg) = rx.recv().await {
-                println!("{:?}", msg);
-                let amount = msg.amount.parse::<u128>();
+                //println!("{:#?}", msg);
+                let amount = msg.amount.parse::<u128>().unwrap();
                 let hash = msg.hash.as_str();
-                let addr = msg.account;
-                let accounts = &mut *accounts.lock().await;
-                let account = accounts.iter_mut().find(|a| a.addr == addr).unwrap();
-                Manager::receive(&rpc, amount.unwrap(), hash, account)
-                    .await
-                    .unwrap();
+                if let block::SubType::Send = msg.block.subtype.unwrap() {
+                    let addr = msg.block.link_as_account.unwrap(); 
+                    let accounts = &mut *accounts.lock().await;
+                    let account = accounts.iter_mut().find(|a| a.addr == addr).unwrap();
+                    Manager::receive(&rpc, amount, hash, account)
+                        .await
+                        .unwrap();
+                } 
             }
         });
 
@@ -204,6 +206,7 @@ impl Manager {
             }
             block = account.receive(amount, link)?;
         }
+        println!("{:#?}", block);
         if let Some(hash) = rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?

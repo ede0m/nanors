@@ -7,8 +7,23 @@ use url::Url;
 
 pub struct ClientWS {
     server_addr: String,
-    stream: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    stream: Box<WebSocketStream<MaybeTlsStream<TcpStream>>>,
     // todo: accounts list?
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WSConfirmationResp {
+    topic: String,
+    time: String,
+    message: WSConfirmationMessage,
+}
+
+// https://docs.nano.org/integration-guides/websockets/#confirmations
+#[derive(Serialize, Deserialize, Debug)]
+pub struct WSConfirmationMessage {
+    pub account: String,
+    pub amount: String,
+    pub hash: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -26,11 +41,10 @@ struct WSConfirmationOptionsReq {
 impl ClientWS {
     pub async fn new(host: &str) -> Result<ClientWS, Box<dyn std::error::Error>> {
         let url = Url::parse(host)?;
-        let (ws_stream, _) = match connect_async(url).await {
-            Ok(s) => s,
+        let ws_stream = match connect_async(url).await {
+            Ok(s) => Box::new(s.0),
             Err(e) => return Err(format!("failed to connect to stream: {:?}", e).into()),
         };
-
         let ws = ClientWS {
             server_addr: String::from(host),
             stream: ws_stream,
@@ -57,13 +71,12 @@ impl ClientWS {
 
     pub async fn watch_confirmation(
         &mut self,
-        sender: mpsc::Sender<tokio_tungstenite::tungstenite::Message>,
+        sender: mpsc::Sender<WSConfirmationMessage>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        //Stream recv block confirmations...
         while let Some(msg) = self.stream.next().await {
-            let msg = msg?;
-            println!("{}", msg);
-            sender.send(msg).await?;
+            let msg = msg?.into_text()?;
+            let c: WSConfirmationResp = serde_json::from_str(msg.as_str())?;
+            sender.send(c.message).await?;
         }
         Err("ws: confirmation ended".into())
     }

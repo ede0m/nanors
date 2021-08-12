@@ -7,7 +7,7 @@ use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {   
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let main_menu = &["wallet", "exit"];
     let wallet_menu = &["new", "load", "show", "back"];
     println!("\n    nanors v0.1.0\n    -------------\n");
@@ -27,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             _ => print_err(&format!("{} unrecognized", selection)),
         }
     }
-    
+
     Ok(())
 }
 
@@ -48,7 +48,7 @@ fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
     menu[idx_selected]
 }
 
-async fn run_wallet_menu(menu: &[&str], manager : &mut manager::Manager) {
+async fn run_wallet_menu(menu: &[&str], manager: &mut manager::Manager) {
     loop {
         let selection = menu_select(menu, "wallet options:");
         match selection {
@@ -57,13 +57,13 @@ async fn run_wallet_menu(menu: &[&str], manager : &mut manager::Manager) {
                 if let Err(e) = w {
                     print_err(&format!("\n{}\n", e));
                     continue;
-                }                
+                }
                 if let Err(e) = manager.set_wallet(w.unwrap()).await {
                     print_err(&format!("\n{}\n", e));
                     continue;
                 }
                 run_account_menu(manager).await;
-            },
+            }
             "load" => {
                 let w = wallet_init(true).await;
                 if let Err(e) = w {
@@ -73,15 +73,14 @@ async fn run_wallet_menu(menu: &[&str], manager : &mut manager::Manager) {
                 if let Err(e) = manager.set_wallet(w.unwrap()).await {
                     print_err(&format!("\n{}\n", e));
                     continue;
-                } 
+                }
                 run_account_menu(manager).await;
-            },
+            }
             "show" => wallets_show(),
             "back" => break,
             _ => print_err(&format!("unrecognized command {}", selection)),
         }
     }
-    
 }
 
 async fn wallet_init(load: bool) -> Result<wallet::Wallet, Box<dyn std::error::Error>> {
@@ -91,7 +90,7 @@ async fn wallet_init(load: bool) -> Result<wallet::Wallet, Box<dyn std::error::E
         w = wallet::Wallet::load(&name, &password);
     } else {
         let (name, password) = wallet_prompt(true);
-        w = wallet::Wallet::new(&name, &password);
+        w = wallet::Wallet::new(&name, &password).await;
     }
     w
 }
@@ -152,6 +151,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
                 println!();
                 manager
                     .account_add(&account_prompt(&curr_wallet_name))
+                    .await
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
                 print_show(&format!(
                     "\ncreated new account for wallet {}",
@@ -159,7 +159,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
                 ));
             }
             "send" => {
-                let (from, to, amount) = send_prompt(manager.get_accounts());
+                let (from, to, amount) = send_prompt(manager.get_accounts_info().await);
                 match manager.send(amount, &from, &to).await {
                     Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
@@ -167,7 +167,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
             }
             "show" => {
                 println!();
-                manager.get_accounts().iter().for_each(|a| {
+                manager.get_accounts_info().await.iter().for_each(|a| {
                     print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance))
                 });
                 println!();

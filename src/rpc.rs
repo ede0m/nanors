@@ -2,14 +2,17 @@
 // https://docs.nano.org/commands/rpc-protocol/#node-rpcs
 use crate::block;
 use reqwest::Client;
-use serde::{de::{DeserializeOwned,IntoDeserializer}, Deserialize, Serialize, Deserializer};
+use serde::{
+    de::{DeserializeOwned, IntoDeserializer},
+    Deserialize, Deserializer, Serialize,
+};
 use std::array::IntoIter;
 use std::collections::HashMap;
 use std::iter::FromIterator;
 
 pub struct ClientRpc {
     server_addr: String,
-    client: reqwest::Client,
+    client: Box<reqwest::Client>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -28,11 +31,11 @@ pub struct RPCAccountInfoResp {
 
 #[derive(Deserialize, Debug)]
 pub struct RPCPendingResp {
-    #[serde(deserialize_with = "empty_string_is_none")]
+    //#[serde(deserialize_with = "empty_string_as_none")]
     pub blocks: Option<Vec<String>>,
 }
 
-fn empty_string_is_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: Deserialize<'de>,
@@ -41,7 +44,7 @@ where
     let opt = opt.as_ref().map(String::as_str);
     match opt {
         None | Some("") => Ok(None),
-        Some(s) => T::deserialize(s.into_deserializer()).map(Some)
+        Some(s) => T::deserialize(s.into_deserializer()).map(Some),
     }
 }
 
@@ -90,7 +93,7 @@ impl ClientRpc {
         let client = Client::builder().build()?;
         Ok(ClientRpc {
             server_addr: String::from(addr),
-            client: client,
+            client: Box::new(client),
         })
     }
 
@@ -209,7 +212,7 @@ impl ClientRpc {
             .await
         {
             Err(e) => {
-                eprintln!("\nrpc pending failed.\n error: {:#?}", e);
+                eprintln!("\nwork gen failed.\n error: {:#?}", e);
                 None
             }
             Ok(v) => v,
@@ -227,7 +230,7 @@ impl ClientRpc {
         if status.is_client_error() || status.is_server_error() {
             return Err(format!("received {} from node. error: {}", status, resp).into());
         }
-        //println!("\nstatus: {}, body: {}\n", status, resp);
+        println!("\nstatus: {}, body: {}\n", status, resp);
         let resp = match serde_json::from_str(&resp) {
             Ok(t) => Ok(Some(t)),
             Err(e) => {

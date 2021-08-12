@@ -1,5 +1,6 @@
 use crate::account;
 use crate::encoding;
+use futures::lock::Mutex;
 use hex::FromHex;
 use std::convert::TryInto;
 use std::error::Error;
@@ -7,16 +8,17 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
+use std::sync::Arc;
 
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
 
 pub struct Wallet {
     pub name: String,
-    pub accounts: Vec<account::Account>,
+    pub accounts: Arc<Mutex<Vec<account::Account>>>,
 }
 
 impl Wallet {
-    pub fn new(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
+    pub async fn new(name: &str, pw: &str) -> Result<Wallet, Box<dyn Error>> {
         let name = String::from(name);
         if find_local_wallet(&name).is_some() {
             return Err(format!("wallet {} already exists", name).into());
@@ -24,15 +26,19 @@ impl Wallet {
         let seed = encoding::generate_nano_seed();
         let mut accounts = Vec::new();
         accounts.push(account::Account::new(0, &seed)?);
+        let accounts = Arc::new(Mutex::new(accounts));
         let wallet = Wallet { name, accounts };
-        wallet.save_wallet(pw, &seed)?;
+        wallet.save_wallet(pw, &seed).await?;
         Ok(wallet)
     }
 
-    pub fn add_account(&mut self, pw: &str) -> Result<(), Box<dyn Error>> {
+    pub async fn add_account(&mut self, pw: &str) -> Result<(), Box<dyn Error>> {
         let (_, n_acct, seed) = get_wallet_data(&self.name, pw)?;
-        self.accounts.push(account::Account::new(n_acct, &seed)?);
-        self.save_wallet(pw, &seed)?;
+        self.accounts
+            .lock()
+            .await
+            .push(account::Account::new(n_acct, &seed)?);
+        self.save_wallet(pw, &seed).await?;
         Ok(())
     }
 
@@ -43,19 +49,22 @@ impl Wallet {
             for i in 0..n_acct {
                 accounts.push(account::Account::new(i, &seed)?);
             }
-            Ok(Wallet { name, accounts })
+            Ok(Wallet {
+                name,
+                accounts: Arc::new(Mutex::new(accounts)),
+            })
         } else {
             Err("something went wrong".into())
         }
     }
 
-    fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
         let (ciphertext, nonce) =
             encoding::aes_gcm_encrypt(pw.as_bytes(), seed, &self.name.as_bytes());
         let new_wal_str = format!(
             "{}|{}|{}|{}",
             self.name,
-            self.accounts.len(),
+            self.accounts.lock().await.len(),
             hex::encode_upper(&ciphertext),
             hex::encode_upper(&nonce)
         );

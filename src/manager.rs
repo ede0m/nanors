@@ -9,26 +9,28 @@ use futures::lock::Mutex;
 use std::convert::TryInto;
 use std::error::Error;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
-const PUBLIC_NANO_RPC_HOST: &str = "https://mynano.ninja/api/node";
+//const PUBLIC_NANO_RPC_HOST: &str = "https://mynano.ninja/api/node";
+const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
 const PUBLIC_NANO_WS_HOST: &str = "wss://ws.mynano.ninja/";
 const WORK_LOCAL: bool = false;
 
 pub struct Manager {
     rpc: rpc::ClientRpc,
-    ws: ws::ClientWS,
     wallet: Option<wallet::Wallet>,
+    cancel: Option<tokio::sync::oneshot::Sender<()>>,
+    //watch_handle: Option<tokio::task::JoinHandle<()>>,
+    //recv_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Manager {
     pub async fn new() -> Result<Manager, Box<dyn std::error::Error>> {
         let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST)?;
-        let ws = ws::ClientWS::new(PUBLIC_NANO_WS_HOST).await?;
         Ok(Manager {
             rpc,
-            ws,
             wallet: None,
+            cancel: None,
         })
     }
 
@@ -37,9 +39,15 @@ impl Manager {
     }
 
     pub async fn set_wallet(&mut self, wallet: wallet::Wallet) -> Result<(), Box<dyn Error>> {
+        if self.wallet.is_some() {
+            //let tx = self.cancel.take();
+            //tx.unwrap().send(()).unwrap();
+            //self.recv_handle.as_mut().unwrap().abort();
+            //self.watch_handle.as_mut().unwrap().abort();
+        }
         self.wallet = Some(wallet);
-        let telem = self.rpc.connect().await?;
-        println!("\nconnected to network: {:?}\n", telem);
+        // let telem = self.rpc.connect().await?;
+        // println!("\nconnected to network: {:?}\n", telem);
         self.synchronize().await?;
         self.ws_observe_accounts().await?;
         Ok(())
@@ -150,34 +158,53 @@ impl Manager {
             .iter()
             .map(|a| a.addr.clone())
             .collect();
-        let mut ws = ws::ClientWS::new(PUBLIC_NANO_WS_HOST).await?;
-        ws.subscribe_confirmation(addrs).await?;
-        let (tx, mut rx) = mpsc::channel::<ws::WSConfirmationMessage>(20);
-        // websocket watch confirmations in background
-        tokio::spawn(async move {
-            if let Err(e) = ws.watch_confirmation(tx).await {
-                panic!(format!("{:?}", e));
-            }
-        });
         let accounts = accounts.clone();
+        let (tx, mut rx) = mpsc::channel::<ws::WSConfirmationMessage>(20);
+        //let (cancel_tx, cancel_rx) = oneshot::channel();
+    
         let handle = tokio::spawn(async move {
-            let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
-            while let Some(msg) = rx.recv().await {
-                //println!("{:#?}", msg);
-                let amount = msg.amount.parse::<u128>().unwrap();
-                let hash = msg.hash.as_str();
-                if let block::SubType::Send = msg.block.subtype.unwrap() {
-                    let addr = msg.block.link_as_account.unwrap(); 
-                    let accounts = &mut *accounts.lock().await;
-                    let account = accounts.iter_mut().find(|a| a.addr == addr).unwrap();
-                    Manager::receive(&rpc, amount, hash, account)
-                        .await
-                        .unwrap();
-                } 
-            }
+            // websocket watch confirmations in background
+            let watch_handle = tokio::spawn(async move {
+                let mut ws = ws::ClientWS::new(PUBLIC_NANO_WS_HOST).await.unwrap();
+                if let Err(e) = ws.subscribe_confirmation(addrs, tx).await {
+                    eprintln!("{:?}", e);
+                    //panic!("ws observe ended!");
+                }
+                // https://tokio.rs/tokio/tutorial/select#cancellation
+                // tokio::select! {
+                //     _ = async {
+                //         if let Err(e) = ws.subscribe_confirmation(addrs, tx).await {
+                //             eprintln!("{:?}", e);
+                //             //panic!("ws observe ended!");
+                //         }
+                //     } => {}
+                //     _ = cancel_rx => {
+                //         println!("cancelling current ws sub");
+                //     }
+                // }
+            });
+
+            let recv_handle = tokio::spawn(async move {
+                let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
+                while let Some(msg) = rx.recv().await {
+                    println!("from recv\n{:#?}", msg);
+                    let amount = msg.amount.parse::<u128>().unwrap();
+                    let hash = msg.hash.as_str();
+                    if let block::SubType::Send = msg.block.subtype.unwrap() {
+                        let addr = msg.block.link_as_account.unwrap(); 
+                        let accounts = &mut *accounts.lock().await;
+                        let account = accounts.iter_mut().find(|a| a.addr == addr).unwrap();
+                        Manager::receive(&rpc, amount, hash, account)
+                            .await
+                            .unwrap();
+                    } 
+                }
+            }); 
+
+            recv_handle.await;
+            watch_handle.await;   
         });
 
-        //handle.await.unwrap();
         Ok(())
     }
 
@@ -206,7 +233,6 @@ impl Manager {
             }
             block = account.receive(amount, link)?;
         }
-        println!("{:#?}", block);
         if let Some(hash) = rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?

@@ -1,6 +1,8 @@
 use crate::block;
 
 use futures_util::{SinkExt, StreamExt};
+use futures::lock::Mutex;
+use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -29,14 +31,14 @@ pub struct WSConfirmationMessage {
     pub block: block::NanoBlock
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct WSConfirmationReq {
     action: String,
     topic: String,
     options: WSConfirmationOptionsReq,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct WSConfirmationOptionsReq {
     accounts: Vec<String>,
 }
@@ -57,12 +59,26 @@ impl ClientWS {
 
     pub async fn subscribe_confirmation(
         &mut self,
-        accounts: Vec<String>,
+        accounts: &Vec<String>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let req = WSConfirmationReq {
             action: String::from("subscribe"),
             topic: String::from("confirmation"),
-            options: WSConfirmationOptionsReq { accounts: accounts },
+            options: WSConfirmationOptionsReq { accounts: accounts.to_owned() },
+        };
+        let req = match serde_json::to_string(&req) {
+            Ok(req) => req,
+            Err(e) => return Err(e.into()),
+        };
+        self.stream.send(Message::text(req)).await?;
+        Ok(())
+    }
+
+    pub async fn unsubscribe_confirmation(&mut self, accounts: &Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let req = WSConfirmationReq {
+            action: String::from("unsubscribe"),
+            topic: String::from("confirmation"),
+            options: WSConfirmationOptionsReq { accounts: accounts.to_owned() },
         };
         let req = match serde_json::to_string(&req) {
             Ok(req) => req,
@@ -79,6 +95,7 @@ impl ClientWS {
         while let Some(msg) = self.stream.next().await {
             let msg = msg?.into_text()?;
             let c: WSConfirmationResp = serde_json::from_str(msg.as_str())?;
+            println!("\nconfirmation message {:#?}", c.message);
             sender.send(c.message).await?;
         }
         Err("ws: confirmation ended".into())
@@ -86,5 +103,9 @@ impl ClientWS {
 
     pub async fn update_confirmation(&self) {
         unimplemented!();
+    }
+
+    pub async fn close(&mut self) {
+        self.stream.close().await;
     }
 }

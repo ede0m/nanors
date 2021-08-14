@@ -50,7 +50,7 @@ pub async fn subscribe_confirmation(
     sender: mpsc::Sender<WSConfirmationMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let url = Url::parse(ws_host)?;
-    let (mut ws_stream, _) = connect_async(url).await?;
+    let (ws_stream, _) = connect_async(url).await?;
     let (mut write, read) = ws_stream.split();
     subscribe_confirmations(&mut write, accounts).await?;
     let out = tokio::select! {

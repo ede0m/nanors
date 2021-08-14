@@ -153,10 +153,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
                     .account_add(&account_prompt(&curr_wallet_name))
                     .await
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
-                print_show(&format!(
-                    "\ncreated new account for wallet {}",
-                    curr_wallet_name
-                ));
+                print_show(&format!("\ncreated new account for wallet {}", curr_wallet_name));
             }
             "send" => {
                 let (from, to, amount) = send_prompt(manager.get_accounts_info().await);
@@ -167,9 +164,11 @@ async fn run_account_menu(manager: &mut manager::Manager) {
             }
             "show" => {
                 println!();
-                manager.get_accounts_info().await.iter().for_each(|a| {
-                    print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance))
-                });
+                manager
+                    .get_accounts_info()
+                    .await
+                    .iter()
+                    .for_each(|a| print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance)));
                 println!();
             }
             "back" => break,

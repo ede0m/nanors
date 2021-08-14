@@ -49,11 +49,7 @@ impl Account {
         })
     }
 
-    pub fn receive(
-        &mut self,
-        amount: u128,
-        link: &str,
-    ) -> Result<block::NanoBlock, Box<dyn Error>> {
+    pub fn receive(&mut self, amount: u128, link: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
         let subtype = block::SubType::Receive;
         let new_balance = self.balance + amount;
         Ok(self.create_block(new_balance, link, subtype)?)
@@ -191,8 +187,8 @@ mod tests {
     use super::*;
 
     const TEST_SEED: [u8; 32] = [
-        137, 197, 104, 229, 75, 120, 185, 178, 9, 190, 248, 22, 140, 246, 140, 143, 247, 174, 97,
-        154, 204, 80, 167, 39, 121, 67, 35, 190, 48, 60, 244, 11,
+        137, 197, 104, 229, 75, 120, 185, 178, 9, 190, 248, 22, 140, 246, 140, 143, 247, 174, 97, 154, 204,
+        80, 167, 39, 121, 67, 35, 190, 48, 60, 244, 11,
     ];
 
     #[test]

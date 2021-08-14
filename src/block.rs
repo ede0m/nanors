@@ -16,6 +16,7 @@ pub struct NanoBlock {
     pub representative: String,
     pub balance: String,
     pub link: String,
+    pub link_as_account: Option<String>,
     pub signature: Option<String>,
     pub hash: Option<String>,
     pub subtype: Option<SubType>,
@@ -49,6 +50,7 @@ impl NanoBlock {
             representative: String::from(rep),
             balance: new_balance.to_string(),
             link: link.to_string(),
+            link_as_account: None,
             signature: None,
             hash: None,
             subtype: Some(subtype),
@@ -67,9 +69,7 @@ impl NanoBlock {
         let bal: [u8; 16] = self.balance.parse::<u128>()?.to_be_bytes();
         let link = match self.subtype {
             Some(SubType::Send) => account::decode_addr(&self.link)?,
-            Some(SubType::Receive) | Some(SubType::Open) => {
-                hex::decode(&self.link)?[..].try_into()?
-            }
+            Some(SubType::Receive) | Some(SubType::Open) => hex::decode(&self.link)?[..].try_into()?,
             Some(SubType::Change) => panic!("todo"),
             None => panic!("todo"),
         };
@@ -85,8 +85,7 @@ impl NanoBlock {
             bal,
             link
         );*/
-        let hash: [u8; BLOCK_HASH_SIZE] =
-            (*encoding::blake2bv(BLOCK_HASH_SIZE, &blk_data)?).try_into()?;
+        let hash: [u8; BLOCK_HASH_SIZE] = (*encoding::blake2bv(BLOCK_HASH_SIZE, &blk_data)?).try_into()?;
         self.hash = Some(hex::encode_upper(hash));
         Ok(())
     }

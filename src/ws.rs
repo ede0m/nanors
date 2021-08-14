@@ -1,21 +1,20 @@
+use crate::block;
+
+use futures::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
+use tokio::time;
 use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 use url::Url;
 
-pub struct ClientWS {
-    server_addr: String,
-    stream: Box<WebSocketStream<MaybeTlsStream<TcpStream>>>,
-    // todo: accounts list?
-}
-
 #[derive(Serialize, Deserialize, Debug)]
-pub struct WSConfirmationResp {
-    topic: String,
-    time: String,
-    message: WSConfirmationMessage,
+pub struct WSNanoResp {
+    topic: Option<String>,
+    time: Option<String>,
+    ack: Option<String>,
+    message: Option<WSConfirmationMessage>,
 }
 
 // https://docs.nano.org/integration-guides/websockets/#confirmations
@@ -24,6 +23,7 @@ pub struct WSConfirmationMessage {
     pub account: String,
     pub amount: String,
     pub hash: String,
+    pub block: block::NanoBlock,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -38,50 +38,83 @@ struct WSConfirmationOptionsReq {
     accounts: Vec<String>,
 }
 
-impl ClientWS {
-    pub async fn new(host: &str) -> Result<ClientWS, Box<dyn std::error::Error>> {
-        let url = Url::parse(host)?;
-        let ws_stream = match connect_async(url).await {
-            Ok(s) => Box::new(s.0),
-            Err(e) => return Err(format!("failed to connect to stream: {:?}", e).into()),
-        };
-        let ws = ClientWS {
-            server_addr: String::from(host),
-            stream: ws_stream,
-        };
-        Ok(ws)
-    }
+#[derive(Serialize, Deserialize)]
+struct WSPingReq {
+    action: String,
+}
 
-    pub async fn subscribe_confirmation(
-        &mut self,
-        accounts: Vec<String>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let req = WSConfirmationReq {
-            action: String::from("subscribe"),
-            topic: String::from("confirmation"),
-            options: WSConfirmationOptionsReq { accounts: accounts },
-        };
-        let req = match serde_json::to_string(&req) {
-            Ok(req) => req,
-            Err(e) => return Err(e.into()),
-        };
-        self.stream.send(Message::text(req)).await?;
-        Ok(())
-    }
-
-    pub async fn watch_confirmation(
-        &mut self,
-        sender: mpsc::Sender<WSConfirmationMessage>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        while let Some(msg) = self.stream.next().await {
-            let msg = msg?.into_text()?;
-            let c: WSConfirmationResp = serde_json::from_str(msg.as_str())?;
-            sender.send(c.message).await?;
+// todo:? generalize to run, and move subscribe logic
+pub async fn subscribe_confirmation(
+    ws_host: &str,
+    accounts: Vec<String>,
+    sender: mpsc::Sender<WSConfirmationMessage>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let url = Url::parse(ws_host)?;
+    let (mut ws_stream, _) = connect_async(url).await?;
+    let (mut write, read) = ws_stream.split();
+    subscribe_confirmations(&mut write, accounts).await?;
+    let out = tokio::select! {
+        res = async {
+            watch_connection(read, sender).await?;
+            Ok::<_, Box<dyn std::error::Error>>(())
+        } => {
+            res?;
         }
-        Err("ws: confirmation ended".into())
-    }
+        res = async {
+            keep_alive(&mut write).await?;
+            Ok::<_, Box<dyn std::error::Error>>(())
+        } => {
+            res?;
+        }
+        // oneshot cancel needed?
+    };
 
-    pub async fn update_confirmation(&self) {
-        unimplemented!();
+    Ok(())
+}
+
+async fn watch_connection(
+    mut stream: SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>,
+    sender: mpsc::Sender<WSConfirmationMessage>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    while let Some(msg) = stream.next().await {
+        let msg = msg?.into_text()?;
+        let nr: WSNanoResp = serde_json::from_str(msg.as_str())?;
+        if nr.message.is_some() {
+            //println!("\n\nsend conf:\n\n{:#?}", msg);
+            sender.send(nr.message.unwrap()).await?;
+        }
+    }
+    Err("ws: confirmation ended".into())
+}
+
+async fn subscribe_confirmations(
+    stream: &mut SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+    accounts: Vec<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // subscribe to addresses
+    let req = WSConfirmationReq {
+        action: String::from("subscribe"),
+        topic: String::from("confirmation"),
+        options: WSConfirmationOptionsReq { accounts },
+    };
+    let req = match serde_json::to_string(&req) {
+        Ok(req) => req,
+        Err(e) => return Err(e.into()),
+    };
+    stream.send(Message::text(req)).await?;
+    Ok(())
+}
+
+async fn keep_alive(
+    stream: &mut SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let req = WSPingReq {
+        action: String::from("ping"),
+    };
+    loop {
+        time::sleep(time::Duration::from_millis(40000)).await;
+        let req = serde_json::to_string(&req)?;
+        //println!("ping!");
+        stream.send(Message::text(req)).await?;
     }
 }

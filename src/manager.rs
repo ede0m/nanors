@@ -78,7 +78,12 @@ impl Manager {
         Ok(())
     }
 
-    pub async fn send(&mut self, amount: u128, from: &str, to: &str) -> Result<String, Box<dyn Error>> {
+    pub async fn send(
+        &mut self,
+        amount: u128,
+        from: &str,
+        to: &str,
+    ) -> Result<String, Box<dyn Error>> {
         if self.wallet.is_none() {
             return Err("no wallet set".into());
         }
@@ -88,14 +93,26 @@ impl Manager {
             None => return Err("from address not found".into()),
         };
         if !from.has_work() {
-            Manager::cache_work(from, &self.rpc, from.frontier.clone(), work::DEFAULT_DIFFICULTY).await?;
+            Manager::cache_work(
+                from,
+                &self.rpc,
+                from.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
         }
         let block = from.send(amount, to)?;
         if let Some(hash) = self.rpc.process(&block).await {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             from.accept_block(&block)?;
-            Manager::cache_work(from, &self.rpc, from.frontier.clone(), work::DEFAULT_DIFFICULTY).await?;
+            Manager::cache_work(
+                from,
+                &self.rpc,
+                from.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
             return Ok(hash.hash);
         }
         Err("could not process send block".into())
@@ -128,7 +145,12 @@ impl Manager {
 
     async fn ws_observe_accounts(&mut self) -> Result<(), Box<dyn Error>> {
         let accounts = self.get_accounts();
-        let addrs = accounts.lock().await.iter().map(|a| a.addr.clone()).collect();
+        let addrs = accounts
+            .lock()
+            .await
+            .iter()
+            .map(|a| a.addr.clone())
+            .collect();
         let accounts = accounts.clone();
         let (tx, mut rx) = mpsc::channel::<ws::WSConfirmationMessage>(20);
         let (cancel_tx, cancel_rx) = oneshot::channel();
@@ -176,12 +198,19 @@ impl Manager {
         let block: block::NanoBlock;
         if account.frontier == [0u8; block::BLOCK_HASH_SIZE] {
             if !account.has_work() {
-                Manager::cache_work(account, rpc, account.pk.clone(), work::RECV_DIFFICULTY).await?;
+                Manager::cache_work(account, rpc, account.pk.clone(), work::RECV_DIFFICULTY)
+                    .await?;
             }
             block = account.open(amount, link)?;
         } else {
             if !account.has_work() {
-                Manager::cache_work(account, rpc, account.frontier.clone(), work::RECV_DIFFICULTY).await?;
+                Manager::cache_work(
+                    account,
+                    rpc,
+                    account.frontier.clone(),
+                    work::RECV_DIFFICULTY,
+                )
+                .await?;
             }
             block = account.receive(amount, link)?;
         }
@@ -189,7 +218,13 @@ impl Manager {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             account.accept_block(&block)?;
-            Manager::cache_work(account, rpc, account.frontier.clone(), work::DEFAULT_DIFFICULTY).await?;
+            Manager::cache_work(
+                account,
+                rpc,
+                account.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
             return Ok(hash.hash);
         }
         Err("could not process receive block".into())

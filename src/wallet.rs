@@ -59,7 +59,8 @@ impl Wallet {
     }
 
     async fn save_wallet(&self, pw: &str, seed: &[u8]) -> Result<(), Box<dyn Error>> {
-        let (ciphertext, nonce) = encoding::aes_gcm_encrypt(pw.as_bytes(), seed, &self.name.as_bytes());
+        let (ciphertext, nonce) =
+            encoding::aes_gcm_encrypt(pw.as_bytes(), seed, &self.name.as_bytes());
         let new_wal_str = format!(
             "{}|{}|{}|{}",
             self.name,
@@ -122,7 +123,11 @@ fn wallet_data_from_str<'a, I>(mut wal_iter: I) -> Result<(u32, Vec<u8>, [u8; 12
 where
     I: Iterator<Item = &'a str>,
 {
-    let n_acct = wal_iter.next().ok_or("n_acct not found")?.parse::<u32>().unwrap();
+    let n_acct = wal_iter
+        .next()
+        .ok_or("n_acct not found")?
+        .parse::<u32>()
+        .unwrap();
     let ciphertext = hex::decode(wal_iter.next().ok_or("ciphertext not found")?)?;
     let nonce = <[u8; 12]>::from_hex(wal_iter.next().ok_or("nonce not found")?)?;
     Ok((n_acct, ciphertext, nonce))

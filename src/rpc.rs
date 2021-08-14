@@ -97,9 +97,13 @@ impl ClientRpc {
         })
     }
 
-    pub async fn connect(&self) -> std::result::Result<RPCTelemetryResp, Box<dyn std::error::Error>> {
+    pub async fn connect(
+        &self,
+    ) -> std::result::Result<RPCTelemetryResp, Box<dyn std::error::Error>> {
         let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "telemetry")]));
-        let v = self.rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r).await;
+        let v = self
+            .rpc_post::<RPCTelemetryResp, HashMap<&str, &str>>(r)
+            .await;
         match v {
             Err(e) => {
                 return Err(format!(
@@ -121,7 +125,10 @@ impl ClientRpc {
             ("json_block", "true"),
             ("hash", hash),
         ]));
-        match self.rpc_post::<RPCBlockInfoResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCBlockInfoResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -139,7 +146,10 @@ impl ClientRpc {
             ("representative", "true"),
             ("account", acct),
         ]));
-        match self.rpc_post::<RPCAccountInfoResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCAccountInfoResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nrpc block info failed.\n error: {:#?}", e);
                 None
@@ -179,7 +189,10 @@ impl ClientRpc {
             ("account", addr),
             ("include_active", "true"),
         ]));
-        match self.rpc_post::<RPCPendingResp, HashMap<&str, &str>>(r).await {
+        match self
+            .rpc_post::<RPCPendingResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nrpc pending failed.\n error: {:#?}", e);
                 None
@@ -190,8 +203,14 @@ impl ClientRpc {
 
     // https://docs.nano.org/commands/rpc-protocol/#pending
     pub async fn work_generate(&self, hash: &str) -> Option<RPCWorkGenResp> {
-        let r = HashMap::<_, _>::from_iter(IntoIter::new([("action", "work_generate"), ("hash", hash)]));
-        match self.rpc_post::<RPCWorkGenResp, HashMap<&str, &str>>(r).await {
+        let r = HashMap::<_, _>::from_iter(IntoIter::new([
+            ("action", "work_generate"),
+            ("hash", hash),
+        ]));
+        match self
+            .rpc_post::<RPCWorkGenResp, HashMap<&str, &str>>(r)
+            .await
+        {
             Err(e) => {
                 eprintln!("\nwork gen failed.\n error: {:#?}", e);
                 None

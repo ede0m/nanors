@@ -10,8 +10,8 @@ use std::convert::TryInto;
 
 const B32_ENCODING_SIZE: usize = 5;
 const ALPHABET_ARR: [char; 32] = [
-    '1', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k',
-    'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'w', 'x', 'y', 'z',
+    '1', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'm', 'n',
+    'o', 'p', 'q', 'r', 's', 't', 'u', 'w', 'x', 'y', 'z',
 ];
 
 // credit to https://github.com/feeless/feeless/blob/main/src/keys/address.rs
@@ -57,10 +57,7 @@ pub fn aes_gcm_encrypt(pw: &[u8], data: &[u8], hkdf_info: &[u8]) -> (Vec<u8>, [u
     let cipher = Aes128Gcm::new(key);
     let nonce_data = rand::thread_rng().gen::<[u8; 12]>(); // 96 bit. todo: use sequence
     let nonce = Nonce::from_slice(&nonce_data);
-    (
-        cipher.encrypt(nonce, data).expect("encrypt failure"),
-        nonce_data,
-    )
+    (cipher.encrypt(nonce, data).expect("encrypt failure"), nonce_data)
 }
 
 pub fn aes_gcm_decrypt(
@@ -87,10 +84,7 @@ fn hkdf_pw_expand(ikm: &[u8], info: &[u8]) -> [u8; 16] {
     okm
 }
 
-pub fn blake2bv(
-    digest_size: usize,
-    message: &[u8],
-) -> Result<Box<[u8]>, Box<dyn std::error::Error>> {
+pub fn blake2bv(digest_size: usize, message: &[u8]) -> Result<Box<[u8]>, Box<dyn std::error::Error>> {
     let mut hasher = VarBlake2b::new(digest_size)?;
     hasher.update(message);
     Ok(hasher.finalize_boxed())
@@ -118,8 +112,7 @@ mod tests {
 
     #[test]
     fn valid_work() {
-        let pk = hex::decode("611C5C60034E6AD9ED9591E62DD1A78B482C2EDF1A02C5E063E5ABE692AED065")
-            .unwrap();
+        let pk = hex::decode("611C5C60034E6AD9ED9591E62DD1A78B482C2EDF1A02C5E063E5ABE692AED065").unwrap();
         let mut nonce: [u8; 8] = hex::decode("08d09dc3405d9441").unwrap().try_into().unwrap();
         nonce.reverse(); // byte order reversed for be
         let output = nano_work_hash(&pk, &nonce).unwrap();

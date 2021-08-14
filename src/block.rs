@@ -69,9 +69,7 @@ impl NanoBlock {
         let bal: [u8; 16] = self.balance.parse::<u128>()?.to_be_bytes();
         let link = match self.subtype {
             Some(SubType::Send) => account::decode_addr(&self.link)?,
-            Some(SubType::Receive) | Some(SubType::Open) => {
-                hex::decode(&self.link)?[..].try_into()?
-            }
+            Some(SubType::Receive) | Some(SubType::Open) => hex::decode(&self.link)?[..].try_into()?,
             Some(SubType::Change) => panic!("todo"),
             None => panic!("todo"),
         };
@@ -87,8 +85,7 @@ impl NanoBlock {
             bal,
             link
         );*/
-        let hash: [u8; BLOCK_HASH_SIZE] =
-            (*encoding::blake2bv(BLOCK_HASH_SIZE, &blk_data)?).try_into()?;
+        let hash: [u8; BLOCK_HASH_SIZE] = (*encoding::blake2bv(BLOCK_HASH_SIZE, &blk_data)?).try_into()?;
         self.hash = Some(hex::encode_upper(hash));
         Ok(())
     }

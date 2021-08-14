@@ -1,3 +1,4 @@
 /target
 *.wal
 .vscode
+rustfmt.toml

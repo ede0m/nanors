@@ -6,6 +6,7 @@ use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
 use std::convert::TryInto;
 use std::error::Error;
+use regex::Regex;
 
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 
@@ -71,7 +72,14 @@ impl Account {
         Ok(self.create_block(new_balance, to, subtype)?)
     }
 
-    // todo: change
+    pub fn change(&mut self, rep: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
+        let subtype = block::SubType::Change;
+        if !valid_addr(rep) {
+            return Err("representative is not a valid nano address".into());
+        }
+        self.rep = String::from(rep);
+        Ok(self.create_block(self.balance, "0", subtype)?)
+    }
 
     pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
         self.balance = balance;
@@ -183,6 +191,17 @@ pub fn decode_addr(addr: &str) -> Result<[u8; 32], Box<dyn Error>> {
     let addr_bytes = addr_bits.as_raw_slice();
     let addr_bytes: [u8; 32] = addr_bytes.try_into()?;
     Ok(addr_bytes)
+}
+
+pub fn valid_addr(addr: &str) -> bool {
+    // todo: validate with checksum
+    let re = Regex::new(r"^(nano|xrb)_[13]{1}[13456789abcdefghijkmnopqrstuwxyz]{59}$").unwrap();
+    if re.is_match(addr) {
+        true
+    }
+    else {
+        false
+    }
 }
 
 #[cfg(test)]

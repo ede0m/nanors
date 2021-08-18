@@ -72,7 +72,7 @@ impl NanoBlock {
             Some(SubType::Receive) | Some(SubType::Open) => {
                 hex::decode(&self.link)?[..].try_into()?
             }
-            Some(SubType::Change) => panic!("todo"),
+            Some(SubType::Change) => [0u8; 32],
             None => panic!("todo"),
         };
 

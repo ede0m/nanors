@@ -12,7 +12,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 //other good nodes "https://mynano.ninja/api/node";
-const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
+//const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
+const PUBLIC_NANO_RPC_HOST: &str = "https://mynano.ninja/api/node";
 const PUBLIC_NANO_WS_HOST: &str = "wss://ws.mynano.ninja/";
 const WORK_LOCAL: bool = false;
 
@@ -110,6 +111,45 @@ impl Manager {
                 from,
                 &self.rpc,
                 from.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
+            return Ok(hash.hash);
+        }
+        Err("could not process send block".into())
+    }
+
+    pub async fn change(
+        &mut self,
+        acct: &str,
+        rep: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        if self.wallet.is_none() {
+            return Err("no wallet set".into());
+        }
+        let accounts = &mut self.wallet.as_mut().unwrap().accounts.lock().await;
+        let for_acct = match accounts.iter_mut().find(|a| a.addr == acct) {
+            Some(a) => a,
+            None => return Err("from address not found".into()),
+        };
+        if !for_acct.has_work() {
+            Manager::cache_work(
+                for_acct,
+                &self.rpc,
+                for_acct.frontier.clone(),
+                work::DEFAULT_DIFFICULTY,
+            )
+            .await?;
+        }
+        let block = for_acct.change(rep)?;
+        if let Some(hash) = self.rpc.process(&block).await {
+            // todo: just do this in acct.create_block.
+            // do a rollback somehow..?
+            for_acct.accept_block(&block)?;
+            Manager::cache_work(
+                for_acct,
+                &self.rpc,
+                for_acct.frontier.clone(),
                 work::DEFAULT_DIFFICULTY,
             )
             .await?;

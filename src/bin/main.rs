@@ -2,7 +2,6 @@ use dialoguer::{theme::ColorfulTheme, Input, Password, Select};
 use nanors::account;
 use nanors::manager;
 use nanors::wallet;
-use regex::Regex;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 
@@ -141,13 +140,13 @@ fn wallets_show() {
 }
 
 async fn run_account_menu(manager: &mut manager::Manager) {
-    let account_menu = &["create", "send", "show", "back"];
+    let account_menu = &["new", "send", "change", "show", "back"];
     let curr_wallet_name = String::from(manager.curr_wallet_name().unwrap());
     loop {
         println!("\n[nano:{:?}]:\n", curr_wallet_name);
         let selection = menu_select(account_menu, "account options:");
         match selection {
-            "create" => {
+            "new" => {
                 println!();
                 manager
                     .account_add(&account_prompt(&curr_wallet_name))
@@ -161,6 +160,13 @@ async fn run_account_menu(manager: &mut manager::Manager) {
             "send" => {
                 let (from, to, amount) = send_prompt(manager.get_accounts_info().await);
                 match manager.send(amount, &from, &to).await {
+                    Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
+                    Err(e) => print_err(&format!("\n{}\n", e)),
+                };
+            }
+            "change" => {
+                let (for_acct, rep) = change_prompt(manager.get_accounts_info().await);
+                match manager.change(&for_acct, &rep).await {
                     Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
                 };
@@ -191,12 +197,10 @@ fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u1
         .interact()
         .unwrap();
     let from_info = valid_accounts.iter().find(|a| a.addr == from).unwrap();
-    let re = Regex::new(r"^(nano|xrb)_[13]{1}[13456789abcdefghijkmnopqrstuwxyz]{59}$").unwrap();
     let to = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("to account:")
         .validate_with(|input: &String| -> Result<(), &str> {
-            // todo: validate with checksum
-            if re.is_match(input) {
+            if account::valid_addr(input) {
                 Ok(())
             } else {
                 Err("not a valid nano address")
@@ -221,6 +225,33 @@ fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u1
         .parse()
         .unwrap();
     (from, to, amount)
+}
+
+fn change_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String) {
+    let for_acct = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("for account:")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if valid_accounts.iter().find(|a| a.addr == *input).is_some() {
+                Ok(())
+            } else {
+                Err("account not in this wallet")
+            }
+        })
+        .interact()
+        .unwrap();
+    let rep = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("new representative:")
+        .validate_with(|input: &String| -> Result<(), &str> {
+            if account::valid_addr(input) {
+                Ok(())
+            } else {
+                Err("not a valid nano address")
+            }
+        })
+        .interact()
+        .unwrap();
+
+    (for_acct, rep)
 }
 
 fn account_prompt(wal_name: &str) -> String {

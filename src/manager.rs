@@ -106,13 +106,6 @@ impl Manager {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             from.accept_block(&block)?;
-            Manager::cache_work(
-                from,
-                &self.rpc,
-                from.frontier.clone(),
-                work::DEFAULT_DIFFICULTY,
-            )
-            .await?;
             return Ok(hash.hash);
         }
         Err("could not process send block".into())
@@ -141,13 +134,6 @@ impl Manager {
             // todo: just do this in acct.create_block.
             // do a rollback somehow..?
             for_acct.accept_block(&block)?;
-            Manager::cache_work(
-                for_acct,
-                &self.rpc,
-                for_acct.frontier.clone(),
-                work::DEFAULT_DIFFICULTY,
-            )
-            .await?;
             return Ok(hash.hash);
         }
         Err("could not process send block".into())

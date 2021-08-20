@@ -35,10 +35,10 @@ or
 - account work caching with tasks.
 - unit conversion 
 - bip39 and seed import
-- wallet file convention.
-- platform agnostic.
-- handle sigterm in CLI send, change
 - CLI, manager, wallet in separate project
+- wallet file convention, use OS app dir.
+- handle sigterm in CLI send, change
+- CLI set manager node.
 
 ## Acknowledgements
 

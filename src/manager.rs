@@ -12,8 +12,7 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
 //other good nodes "https://mynano.ninja/api/node";
-//const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
-const PUBLIC_NANO_RPC_HOST: &str = "https://mynano.ninja/api/node";
+const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
 const PUBLIC_NANO_WS_HOST: &str = "wss://ws.mynano.ninja/";
 const WORK_LOCAL: bool = false;
 
@@ -119,11 +118,7 @@ impl Manager {
         Err("could not process send block".into())
     }
 
-    pub async fn change(
-        &mut self,
-        acct: &str,
-        rep: &str,
-    ) -> Result<String, Box<dyn Error>> {
+    pub async fn change(&mut self, acct: &str, rep: &str) -> Result<String, Box<dyn Error>> {
         if self.wallet.is_none() {
             return Err("no wallet set".into());
         }
@@ -192,7 +187,7 @@ impl Manager {
             .map(|a| a.addr.clone())
             .collect();
         let accounts = accounts.clone();
-        let (tx, mut rx) = mpsc::channel::<ws::WSConfirmationMessage>(20);
+        let (tx, rx) = mpsc::channel::<ws::WSConfirmationMessage>(20);
         let (cancel_tx, cancel_rx) = oneshot::channel();
         self.cancel = Some(cancel_tx);
         tokio::spawn(async move {
@@ -200,31 +195,19 @@ impl Manager {
             tokio::select! {
                 _ = async {
                     if let Err(e) = ws::subscribe_confirmation(PUBLIC_NANO_WS_HOST, addrs, tx).await {
-                        eprintln!("{:?}", e);
+                        eprintln!("ws sub conf error: {:#?}", e)
                     }
                 } => {}
 
                 _ = async {
-                    // TODO: clean
-                    let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
-                    while let Some(msg) = rx.recv().await {
-                        //println!("\n\nfrom recv:\n\n{:#?}", msg);
-                        let amount = msg.amount.parse::<u128>().unwrap();
-                        let hash = msg.hash.as_str();
-                        if let block::SubType::Send = msg.block.subtype.unwrap() {
-                            let addr = msg.block.link_as_account.unwrap();
-                            let accounts = &mut *accounts.lock().await;
-                            let account = accounts.iter_mut().find(|a| a.addr == addr).unwrap();
-                            Manager::receive(&rpc, amount, hash, account)
-                                .await
-                                .unwrap();
-                        }
+                    if let Err(e) = Manager::watch_confirmations(accounts, rx).await {
+                        eprintln!("manager watch error: {:#?}", e)
                     }
                 } => {}
                 _ = cancel_rx => {
                     println!("cancelling current ws sub");
                 }
-            }
+            };
         });
         Ok(())
     }
@@ -256,18 +239,31 @@ impl Manager {
         }
         if let Some(hash) = rpc.process(&block).await {
             // todo: just do this in acct.create_block.
-            // do a rollback somehow..?
+            // rollback somehow..?
             account.accept_block(&block)?;
-            Manager::cache_work(
-                account,
-                rpc,
-                account.frontier.clone(),
-                work::DEFAULT_DIFFICULTY,
-            )
-            .await?;
             return Ok(hash.hash);
         }
         Err("could not process receive block".into())
+    }
+
+    async fn watch_confirmations(
+        accounts: wallet::Accounts,
+        mut rx: mpsc::Receiver<ws::WSConfirmationMessage>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
+        while let Some(msg) = rx.recv().await {
+            //println!("\n\nfrom recv:\n\n{:#?}", msg);
+            let amount = msg.amount.parse::<u128>().unwrap();
+            let hash = msg.hash.as_str();
+            if let block::SubType::Send = msg.block.subtype.unwrap() {
+                let to_addr = msg.block.link_as_account.unwrap();
+                let accounts = &mut *accounts.lock().await;
+                if let Some(account) = accounts.iter_mut().find(|a| a.addr == to_addr) {
+                    Manager::receive(&rpc, amount, hash, account).await.unwrap();
+                }
+            }
+        }
+        Ok(())
     }
 
     async fn cache_work(

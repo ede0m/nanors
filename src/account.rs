@@ -4,9 +4,9 @@ use crate::work;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
 use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
+use regex::Regex;
 use std::convert::TryInto;
 use std::error::Error;
-use regex::Regex;
 
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 
@@ -198,8 +198,7 @@ pub fn valid_addr(addr: &str) -> bool {
     let re = Regex::new(r"^(nano|xrb)_[13]{1}[13456789abcdefghijkmnopqrstuwxyz]{59}$").unwrap();
     if re.is_match(addr) {
         true
-    }
-    else {
+    } else {
         false
     }
 }

@@ -12,9 +12,11 @@ use std::sync::Arc;
 
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
 
+pub type Accounts = Arc<Mutex<Vec<account::Account>>>;
+
 pub struct Wallet {
     pub name: String,
-    pub accounts: Arc<Mutex<Vec<account::Account>>>,
+    pub accounts: Accounts,
 }
 
 impl Wallet {

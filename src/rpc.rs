@@ -32,21 +32,28 @@ pub struct RPCAccountInfoResp {
 #[derive(Deserialize, Debug)]
 pub struct RPCPendingResp {
     //#[serde(deserialize_with = "empty_string_as_none")]
-    pub blocks: Option<Vec<String>>,
+    pub blocks: RPCPendingBlocks,
 }
 
-fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: Deserialize<'de>,
-{
-    let opt = Option::<String>::deserialize(de)?;
-    let opt = opt.as_ref().map(String::as_str);
-    match opt {
-        None | Some("") => Ok(None),
-        Some(s) => T::deserialize(s.into_deserializer()).map(Some),
-    }
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum RPCPendingBlocks {
+    Blocks(Vec<String>),
+    Empty(String),
 }
+
+// fn empty_string_as_none<'de, D, T>(de: D) -> Result<Option<T>, D::Error>
+// where
+//     D: Deserializer<'de>,
+//     T: Deserialize<'de>,
+// {
+//     let opt = Option::<String>::deserialize(de)?;
+//     let opt = opt.as_ref().map(String::as_str);
+//     match opt {
+//         None | Some("") => Ok(None),
+//         Some(s) => T::deserialize(s.into_deserializer()).map(Some),
+//     }
+// }
 
 #[derive(Deserialize, Debug)]
 pub struct RPCWorkGenResp {

@@ -151,8 +151,8 @@ impl Manager {
                 a.load(info.balance.parse()?, info.frontier, info.representative);
             }
             if let Some(pending) = self.rpc.pending(&a.addr).await {
-                if pending.blocks.is_some() {
-                    for hash in pending.blocks.unwrap() {
+                if let rpc::RPCPendingBlocks::Blocks(blocks) = pending.blocks {
+                    for hash in blocks {
                         if let Some(send_block_info) = self.rpc.block_info(&hash).await {
                             let sent_amount: u128 = send_block_info.amount.parse()?;
                             Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
@@ -191,7 +191,7 @@ impl Manager {
                     }
                 } => {}
                 _ = cancel_rx => {
-                    println!("cancelling current ws sub");
+                    //println!("cancelling current ws sub");
                 }
             };
         });

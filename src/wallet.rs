@@ -1,6 +1,7 @@
 use crate::account;
 use crate::encoding;
 use futures::lock::Mutex;
+use std::sync::Arc;
 use hex::FromHex;
 use std::convert::TryInto;
 use std::error::Error;
@@ -8,7 +9,6 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
 use std::str;
-use std::sync::Arc;
 
 pub const WALLET_FILE_PATH: &str = "nanors.wal";
 

@@ -9,7 +9,7 @@ use std::io::{prelude::*, BufReader};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let main_menu = &["wallet", "exit"];
     let wallet_menu = &["new", "load", "show", "back"];
-    println!("\n    nanors v0.1.0\n    -------------\n");
+    print_under("\n\n  nanors   \n\n");
 
     let mut m = match manager::Manager::new().await {
         Ok(m) => m,
@@ -36,6 +36,18 @@ fn print_err(msg: &str) {
 
 fn print_show(msg: &str) {
     println!("{}", console::style(msg).yellow());
+}
+
+fn print_under(msg: &str) {
+    println!("{}", console::style(msg).underlined());
+}
+
+fn print_show_dim(msg: &str) {
+    println!("{}", console::style(msg).dim());
+}
+
+fn print_italic(msg: &str) {
+    println!("{}", console::style(msg).italic());
 }
 
 fn menu_select<'a>(menu: &'a [&str], prompt: &str) -> &'a str {
@@ -143,7 +155,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
     let account_menu = &["new", "send", "change", "show", "back"];
     let curr_wallet_name = String::from(manager.curr_wallet_name().unwrap());
     loop {
-        println!("\n[nano:{:?}]:\n", curr_wallet_name);
+        print_italic(&format!("\n\n[ nanors: {:?} ]\n", curr_wallet_name));
         let selection = menu_select(account_menu, "account options:");
         match selection {
             "new" => {

@@ -7,9 +7,6 @@ nanors is meant to be a simple software wallet that works with the [Nano network
 
 Wallet operations are preformed within the [tokio runtime](https://github.com/tokio-rs/tokio).
 
-All account balances are currently in raw.
-
-
 -------
 
 ## Usage

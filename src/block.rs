@@ -1,5 +1,6 @@
 use crate::account;
 use crate::encoding;
+use crate::raw;
 use serde::{Deserialize, Serialize};
 use std::convert::TryInto;
 use std::error::Error;
@@ -38,7 +39,7 @@ impl NanoBlock {
         addr: &str,
         prev: &[u8; 32],
         rep: &str,
-        new_balance: u128,
+        new_balance: raw::Raw,
         link: &str,
         subtype: SubType,
         work: String,

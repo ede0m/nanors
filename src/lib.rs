@@ -6,3 +6,4 @@ pub mod rpc;
 pub mod wallet;
 pub mod work;
 pub mod ws;
+pub mod raw;

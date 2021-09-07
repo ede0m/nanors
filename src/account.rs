@@ -1,19 +1,22 @@
 use crate::block;
 use crate::encoding;
 use crate::work;
+use crate::raw;
 use bitvec::prelude::*;
 use byteorder::{BigEndian, ByteOrder};
+use bigdecimal::BigDecimal;
 use ed25519_dalek_blake2b::{Keypair, PublicKey, SecretKey, Signer};
 use regex::Regex;
 use std::convert::TryInto;
 use std::error::Error;
+
 
 const DEFUALT_REP: &str = "nano_1center16ci77qw5w69ww8sy4i4bfmgfhr81ydzpurm91cauj11jn6y3uc5y";
 
 pub struct Account {
     pub index: u32,
     pub addr: String,
-    pub balance: u128,
+    pub balance: raw::Raw,
     pub frontier: [u8; 32],
     pub rep: String,
     pub pk: [u8; 32],
@@ -25,7 +28,7 @@ pub struct Account {
 pub struct AccountInfo {
     pub index: u32,
     pub addr: String,
-    pub balance: u128,
+    pub balance_mnano: BigDecimal,
 }
 
 impl Account {
@@ -37,7 +40,7 @@ impl Account {
             public: PublicKey::from_bytes(&pk).map_err(|e| format!("{}", e))?,
         };
         let addr = Account::create_addr(&pk).unwrap();
-        let (frontier, rep, balance) = ([0u8; 32], String::from(DEFUALT_REP), 0);
+        let (frontier, rep, balance) = ([0u8; 32], String::from(DEFUALT_REP), raw::Raw::new(0));
         Ok(Account {
             index,
             addr,
@@ -52,7 +55,7 @@ impl Account {
 
     pub fn receive(
         &mut self,
-        amount: u128,
+        amount: raw::Raw,
         link: &str,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {
         let subtype = block::SubType::Receive;
@@ -60,13 +63,13 @@ impl Account {
         Ok(self.create_block(new_balance, link, subtype)?)
     }
 
-    pub fn open(&mut self, amount: u128, link: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
+    pub fn open(&mut self, amount: raw::Raw, link: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
         let subtype = block::SubType::Open;
         let new_balance = self.balance + amount;
         Ok(self.create_block(new_balance, link, subtype)?)
     }
 
-    pub fn send(&mut self, amount: u128, to: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
+    pub fn send(&mut self, amount: raw::Raw, to: &str) -> Result<block::NanoBlock, Box<dyn Error>> {
         let subtype = block::SubType::Send;
         let new_balance = self.balance - amount;
         Ok(self.create_block(new_balance, to, subtype)?)
@@ -81,7 +84,7 @@ impl Account {
         Ok(self.create_block(self.balance, "0", subtype)?)
     }
 
-    pub fn load(&mut self, balance: u128, frontier: String, rep: String) {
+    pub fn load(&mut self, balance: raw::Raw, frontier: String, rep: String) {
         self.balance = balance;
         self.frontier = match hex::decode(frontier) {
             Ok(f) => f.try_into().unwrap(),
@@ -150,7 +153,7 @@ impl Account {
 
     fn create_block(
         &self,
-        new_balance: u128,
+        new_balance: raw::Raw,
         link: &str,
         subtype: block::SubType,
     ) -> Result<block::NanoBlock, Box<dyn Error>> {

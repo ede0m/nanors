@@ -4,12 +4,15 @@ use crate::rpc;
 use crate::wallet;
 use crate::work;
 use crate::ws;
+use crate::raw;
 
 use futures::lock::Mutex;
+use tokio::sync::{mpsc, oneshot};
+use std::sync::Arc;
 use std::convert::TryInto;
 use std::error::Error;
-use std::sync::Arc;
-use tokio::sync::{mpsc, oneshot};
+use bigdecimal::BigDecimal;
+
 
 //other good nodes "https://mynano.ninja/api/node";
 const PUBLIC_NANO_RPC_HOST: &str = "https://proxy.nanos.cc/proxy";
@@ -64,7 +67,7 @@ impl Manager {
             .map(|a| account::AccountInfo {
                 index: a.index,
                 addr: a.addr.clone(),
-                balance: a.balance,
+                balance_mnano: a.balance.to_mnano(),
             })
             .collect()
     }
@@ -80,7 +83,7 @@ impl Manager {
 
     pub async fn send(
         &mut self,
-        amount: u128,
+        amount: BigDecimal,
         from: &str,
         to: &str,
     ) -> Result<String, Box<dyn Error>> {
@@ -101,6 +104,7 @@ impl Manager {
             )
             .await?;
         }
+        let amount = raw::Raw::from_mnano(amount);
         let block = from.send(amount, to)?;
         if let Some(hash) = self.rpc.process(&block).await {
             // todo: just do this in acct.create_block.

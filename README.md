@@ -42,7 +42,7 @@ or
 
 ## Acknowledgements
 
-- [feeless](https://github.com/feeless/feeless) bits of code including nano base32 encoding.
+- [feeless](https://github.com/feeless/feeless) ideas and bits of code including nano base32 encoding, raw.
 - [dalek-cryptography](https://github.com/dalek-cryptography/ed25519-dalek) ed25519 key gen, signing.
 - [dialoguer](https://github.com/mitsuhiko/dialoguer) command line prompts and similar things.
 - [nano ninja](https://mynano.ninja/) public nano node.

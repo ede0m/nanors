@@ -30,10 +30,10 @@ or
 - local wallet encryption (aes_gcm)
 - rpc client for interacting with the network
 - websocket client for observing the network.
+- raw/MNano unit conversion 
   
 ## Roadmap
 - account work caching with tasks.
-- unit conversion 
 - bip39 and seed import
 - CLI, manager, wallet in separate project
 - wallet file convention, use OS app dir.

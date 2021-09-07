@@ -4,12 +4,13 @@ use nanors::manager;
 use nanors::wallet;
 use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader};
+use bigdecimal::BigDecimal;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let main_menu = &["wallet", "exit"];
     let wallet_menu = &["new", "load", "show", "back"];
-    print_under("\n\n  nanors   \n\n");
+    print_italic("\n\n  nanors   \n\n");
 
     let mut m = match manager::Manager::new().await {
         Ok(m) => m,
@@ -165,28 +166,28 @@ async fn run_account_menu(manager: &mut manager::Manager) {
                     .await
                     .unwrap_or_else(|e| print_err(&format!("\n{}\n", e)));
                 print_show(&format!(
-                    "\ncreated new account for wallet {}",
+                    "\ncreated new account for wallet {}\n",
                     curr_wallet_name
                 ));
             }
             "send" => {
                 let (from, to, amount) = send_prompt(manager.get_accounts_info().await);
                 match manager.send(amount, &from, &to).await {
-                    Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
+                    Ok(h) => print_show(&format!("\n  success. block hash: {}\n", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
                 };
             }
             "change" => {
                 let (for_acct, rep) = change_prompt(manager.get_accounts_info().await);
                 match manager.change(&for_acct, &rep).await {
-                    Ok(h) => print_show(&format!("\n  success. block hash: {}", h)),
+                    Ok(h) => print_show(&format!("\n  success. block hash: {}\n", h)),
                     Err(e) => print_err(&format!("\n{}\n", e)),
                 };
             }
             "show" => {
                 println!();
                 manager.get_accounts_info().await.iter().for_each(|a| {
-                    print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance))
+                    print_show(&format!("  {} : {} : {}", a.index, a.addr, a.balance_mnano))
                 });
                 println!();
             }
@@ -196,7 +197,7 @@ async fn run_account_menu(manager: &mut manager::Manager) {
     }
 }
 
-fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u128) {
+fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, BigDecimal) {
     let from = Input::with_theme(&ColorfulTheme::default())
         .with_prompt("from account:")
         .validate_with(|input: &String| -> Result<(), &str> {
@@ -220,14 +221,14 @@ fn send_prompt(valid_accounts: Vec<account::AccountInfo>) -> (String, String, u1
         })
         .interact()
         .unwrap();
-    let amount: u128 = Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("amount to send:")
+    let amount: BigDecimal = Input::with_theme(&ColorfulTheme::default())
+        .with_prompt("amount to send (MNano):")
         .validate_with(|input: &String| -> Result<(), &str> {
-            let amount = match input.parse::<u128>() {
+            let amount = match input.parse::<BigDecimal>() {
                 Ok(a) => a,
                 Err(_) => return Err("cannot parse this amount"),
             };
-            if amount > from_info.balance {
+            if amount > from_info.balance_mnano {
                 return Err("you do not have this much");
             }
             Ok(())

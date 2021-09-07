@@ -1,11 +1,11 @@
 use bigdecimal::BigDecimal;
-
 use std::str::FromStr;
 use std::num::ParseIntError;
 use std::ops::{Add, Sub, Div, Mul};
 
 pub const RAW_MNANO_STR : &str = "1000000000000000000000000000000.0";
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Raw {
     pub raw: u128
 }

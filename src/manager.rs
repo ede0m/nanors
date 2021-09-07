@@ -158,7 +158,7 @@ impl Manager {
                 if let rpc::RPCPendingBlocks::Blocks(blocks) = pending.blocks {
                     for hash in blocks {
                         if let Some(send_block_info) = self.rpc.block_info(&hash).await {
-                            let sent_amount: u128 = send_block_info.amount.parse()?;
+                            let sent_amount = send_block_info.amount.parse::<raw::Raw>()?;
                             Manager::receive(&self.rpc, sent_amount, &hash, a).await?;
                         }
                     }
@@ -204,7 +204,7 @@ impl Manager {
 
     async fn receive(
         rpc: &rpc::ClientRpc,
-        amount: u128,
+        amount: raw::Raw,
         link: &str,
         account: &mut account::Account,
     ) -> Result<String, Box<dyn Error>> {
@@ -243,7 +243,7 @@ impl Manager {
         let rpc = rpc::ClientRpc::new(PUBLIC_NANO_RPC_HOST).unwrap();
         while let Some(msg) = rx.recv().await {
             //println!("\n\nfrom recv:\n\n{:#?}", msg);
-            let amount = msg.amount.parse::<u128>().unwrap();
+            let amount = msg.amount.parse::<raw::Raw>().unwrap();
             let hash = msg.hash.as_str();
             if let block::SubType::Send = msg.block.subtype.unwrap() {
                 let to_addr = msg.block.link_as_account.unwrap();
